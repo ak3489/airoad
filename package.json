@@ -1,0 +1,24 @@
+{
+  "name": "airoad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Agent Engineer learning operating system",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "test": "npm run test -w server && npm run test -w web",
+    "seed": "npm run seed -w server",
+    "mongo:setup": "node server/scripts/setup-mongo.mjs",
+    "start": "npm run start -w server"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

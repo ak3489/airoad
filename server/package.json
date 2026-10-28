@@ -1,0 +1,29 @@
+{
+  "name": "@airoad/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "seed": "tsx src/db/seed/run.ts",
+    "mongo:setup": "node scripts/setup-mongo.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.1",
+    "dotenv": "18.0.9",
+    "fastify": "5.12.7",
+    "mongoose": "8.24.7",
+    "undici": "7.16.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

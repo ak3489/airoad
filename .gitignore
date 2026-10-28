@@ -1,0 +1,38 @@
+# 依赖
+node_modules/
+.pnpm-store/
+.yarn/
+
+# 构建产物
+dist/
+web/dist/
+server/dist/
+*.tsbuildinfo
+coverage/
+
+# 环境变量（示例文件需要提交）
+.env
+.env.*
+!.env.example
+
+# 本地数据与运行时
+server/.data/
+server/.cache/
+*.log
+logs/
+*.pid
+
+# 工具缓存
+.vite/
+web/.vite/
+.cache/
+.eslintcache
+.tmp/
+.screens/
+
+# 编辑器与操作系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
