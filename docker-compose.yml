@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -12,10 +14,13 @@ services:
       # 如需账号密码或 MongoDB 在其他机器，在 .env 中覆盖 MONGODB_URI。
       MONGODB_URI: ${MONGODB_URI:-mongodb://host.docker.internal:27017/airoad}
       MONGODB_DB: ${MONGODB_DB:-airoad}
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
       # AI 配置在网页「设置」中填写，保存在浏览器，不通过环境变量注入
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # 只绑定本机，由宝塔 Nginx 反代 /api；不需要对公网开放
+    ports:
+      - "127.0.0.1:8787:8787"
     # 首次启动检测到空库会自动写入 12 周种子内容；已有进度不会被覆盖
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/api/health"]
@@ -23,15 +28,3 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-
-  web:
-    build:
-      context: .
-      dockerfile: web/Dockerfile
-    restart: unless-stopped
-    # 默认只绑定本机，由宝塔 Nginx 按域名反代；不用宝塔时改为 "8080:80"
-    ports:
-      - "127.0.0.1:8080:80"
-    depends_on:
-      api:
-        condition: service_healthy

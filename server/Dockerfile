@@ -1,4 +1,6 @@
-FROM node:20-alpine AS deps
+ARG NODE_IMAGE=node:20-alpine
+
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json server/package.json
@@ -9,7 +11,7 @@ FROM deps AS build
 COPY server ./server
 RUN npm run build -w server
 
-FROM node:20-alpine AS runtime
+FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787

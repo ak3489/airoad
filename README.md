@@ -27,7 +27,7 @@
 - 后端：Node.js 20 + Fastify 5 + TypeScript，Mongoose 8，Zod 4
 - 数据库：MongoDB 7（本地内嵌或外部实例）
 - 测试：Vitest（后端 API / 进度逻辑，前端工具与 Markdown 安全）
-- 部署：Docker Compose + nginx，SSE 反向代理关闭缓冲
+- 部署：Docker Compose 只跑 API，宝塔 Nginx 托管前端静态文件并反代 `/api`
 
 ## 目录
 
@@ -45,8 +45,7 @@
 ├── web/                  # Vue 3 前端
 │   ├── src/views/        # 10 个页面
 │   ├── src/components/   # 工作台、聊天、Markdown 等
-│   ├── nginx.conf
-│   └── Dockerfile
+│   └── dist/             # 构建产物，由宿主机 Nginx 托管
 ├── docker-compose.yml
 ├── .env.example
 └── package.json          # npm workspaces
@@ -104,11 +103,13 @@ npm run build         # server tsc + web vue-tsc & vite build
 
 后端测试使用临时 MongoDB（27019 端口）并在结束后清理；测试会验证 API 行为、任务状态机、步骤解锁与回退、周复盘校验、选修任务统计、资料核验字段与 JSON 备份导出。
 
-## Docker 部署（宝塔面板 + 域名）
+## Docker 部署（API 容器 + 宝塔 Nginx）
 
-前置条件：域名已解析到服务器；宝塔已安装 Nginx；宿主机 MongoDB 已允许容器访问（见第 5 步）。
+只把 API 跑在 Docker 里，前端构建成静态文件交给宝塔已有的 Nginx 托管，不再启动 nginx 容器。
 
-### 1. 上传项目并启动容器
+前置条件：域名已解析到服务器；宝塔已安装 Nginx；宿主机 MongoDB 已允许容器访问（见第 6 步）。
+
+### 1. 启动 API 容器
 
 ```bash
 cd /www/wwwroot
@@ -123,50 +124,99 @@ cp .env.example .env
 WEB_ORIGIN=https://learn.example.com
 ```
 
+证书还没配好时先用 `http://learn.example.com`，第 5 步启用 HTTPS 后再改成 `https://` 并重建容器。
+
 ```bash
-docker compose up -d --build
+docker compose up -d --remove-orphans --build
 docker compose ps
-curl http://127.0.0.1:8080/api/health
+curl http://127.0.0.1:8787/api/health
 ```
 
-返回 `"db":"connected"` 说明容器和 MongoDB 都正常。compose 只启动 `api` 与 `web`，并将 `web` 绑定在 `127.0.0.1:8080`，公网访问统一经过宝塔 Nginx。
+返回 `"db":"connected"` 说明 API 和 MongoDB 都正常。compose 只启动 `api`，并绑定在 `127.0.0.1:8787`，公网访问统一经过宝塔 Nginx。
+
+> 从旧版本升级时带 `--remove-orphans`，会自动清掉之前不用的 `web` 容器。
+> 如果构建卡在 `load metadata for docker.io/...`，说明服务器访问不了 Docker Hub，按「常见问题 → 构建拉不到基础镜像」切换 `NODE_IMAGE` 即可。
 
 - 首次启动检测到 `airoad` 空库会自动写入种子内容，已有数据不覆盖
 - 学习数据保存在宿主机 MongoDB，不在容器卷里，升级镜像不会丢失
 
-### 2. 在宝塔添加站点
+### 2. 构建前端静态文件
+
+在本地项目根目录构建：
+
+```bash
+npm run build -w web
+```
+
+把生成的 `web/dist` 整个目录上传到服务器 `/www/wwwroot/airoad/web/dist`（宝塔文件管理器、scp 或 rsync 均可）。只需要上传这个目录，不需要重复上传源码。
+
+如果服务器已安装 Node.js 20+，也可以直接在服务器构建：
+
+```bash
+cd /www/wwwroot/airoad
+npm ci --workspace @airoad/web --include-workspace-root
+npm run build -w web
+```
+
+### 3. 在宝塔添加站点
 
 网站 → 添加站点：
 
 - 域名：`learn.example.com`
 - PHP 版本：纯静态
+- 根目录：`/www/wwwroot/airoad/web/dist`
 - 不创建数据库、不创建 FTP
 
-### 3. 配置反向代理
+已有站点则在「网站目录」里把根目录改到 `web/dist`。
 
-站点设置 → 反向代理 → 添加反向代理：
+### 4. 配置站点 Nginx
 
-- 代理名称：`airoad`
-- 目标 URL：`http://127.0.0.1:8080`
-- 发送域名：`$host`
-
-保存后打开该代理的「配置文件」，确认配置中包含：
+站点设置 → 配置文件，在 `server { ... }` 中加入以下内容（保留宝塔生成的 `root`、`index`、SSL、日志等配置，不要重复写 `root`）：
 
 ```nginx
-proxy_http_version 1.1;
-proxy_set_header Connection "";
-proxy_set_header Host $host;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_buffering off;
-proxy_cache off;
-proxy_read_timeout 300s;
+gzip on;
+gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+gzip_min_length 1024;
+
+location ^~ /assets/ {
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+}
+
+# API 与 SSE：必须关闭缓冲
+location /api/ {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+
+# 前端路由：刷新子页面不 404
+location / {
+    try_files $uri $uri/ /index.html;
+}
 ```
+
+说明：
+
+- `try_files $uri $uri/ /index.html` 是前端路由必需的，缺少时刷新 `/tasks/xxx` 会 404。
+- `/api/` 前缀比 `/` 长，会优先匹配，不需要额外的反向代理规则。
+- `proxy_pass` 末尾不要加 `/`，否则 `/api/...` 可能被改写成 `/...`，接口全部 404。
+- 如果之前按旧文档在宝塔里加过指向 `8080` 的反向代理，先删除，否则 `/` 会被它接管。
+- SSE 只需要普通 HTTP，不需要 WebSocket 的 `Upgrade` 头，所以 `Connection ""` 即可。
+- 改完执行 `nginx -t` 检查语法，再在宝塔「软件商店 → Nginx → 重载配置」。
 
 `proxy_buffering off` 是 SSE 必需的：缺少时 AI 助手的流式回答会攒到最后一次性出现，长回答还可能超时。
 
-### 4. 开启 HTTPS
+### 5. 开启 HTTPS
 
 站点设置 → SSL → Let's Encrypt 申请证书 → 开启「强制 HTTPS」。然后把 `.env` 改为 `WEB_ORIGIN=https://learn.example.com`，重新创建容器让环境变量生效：
 
@@ -176,17 +226,18 @@ docker compose up -d
 
 注意 `docker compose restart` 不会重新读取 `.env`。
 
-### 5. 防火墙
+### 6. 防火墙
 
 - 宝塔「安全」和云厂商安全组只放行 80 / 443
-- 不要放行 8080 与 27017；compose 已将 web 限制在 `127.0.0.1`
+- 不要放行 8787 与 27017；compose 已将 API 限制在 `127.0.0.1`
 - MongoDB 需监听 Docker 网关（如 `bindIp: 127.0.0.1,172.17.0.1`），或监听 `0.0.0.0` 并用防火墙限制来源
 
-### 6. 更新部署
+### 7. 更新部署
 
 ```bash
 cd /www/wwwroot/airoad
 git pull                # 或重新上传源码，注意不要覆盖 .env
+# 前端有改动：本地 npm run build -w web 后重新上传 web/dist
 docker compose up -d --build
 ```
 
@@ -194,11 +245,32 @@ docker compose up -d --build
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 502 Bad Gateway | 容器未启动或端口不对：`docker compose ps`、`docker compose logs api`、`curl http://127.0.0.1:8080/api/health` |
+| 502 Bad Gateway | API 未启动或端口不对：`docker compose ps`、`docker compose logs api`、`curl http://127.0.0.1:8787/api/health` |
+| 刷新子页面 404 | Nginx 缺少 `try_files $uri $uri/ /index.html` |
+| 页面空白或资源 404 | 站点根目录没有指向 `web/dist`，或没有重新上传构建产物 |
 | 接口返回 `Origin not allowed` | `.env` 的 `WEB_ORIGIN` 与地址栏不一致（协议/域名/端口），改完执行 `docker compose up -d` |
 | AI 回答不逐字输出 | 宝塔反代缺少 `proxy_buffering off;`，保存后重载 Nginx |
 | AI 长回答中途断开 | 反代的 `proxy_read_timeout` 太短，调整为 `300s` |
 | 容器连不上 MongoDB | MongoDB 只监听了 `127.0.0.1`，需加入 Docker 网关或监听 `0.0.0.0` 并限制来源 |
+| 构建报 `load metadata for docker.io/...` | 服务器无法访问 Docker Hub，按下方「构建拉不到基础镜像」处理 |
+
+#### 构建拉不到基础镜像
+
+现在只需要拉取 `node:20-alpine`（前端由宿主机 Nginx 托管，不再需要 nginx 镜像）。Dockerfile 已用 `NODE_IMAGE` 参数化，在 `.env` 中指向可用的镜像站即可（不要改 Dockerfile）：
+
+```dotenv
+NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine
+```
+
+先单独验证镜像站是否可用，再构建：
+
+```bash
+docker pull docker.m.daocloud.io/library/node:20-alpine
+docker compose build api
+docker compose up -d --remove-orphans
+```
+
+公共镜像站地址和可用性会变化，`docker.m.daocloud.io` 不可用时可以换 `docker.1ms.run`、`dockerproxy.net`、`hub.rat.dev` 等，路径同样带 `/library/`。更稳定的方案是给 dockerd 配置代理，或在宝塔 Docker 设置里填写加速器。
 
 > 也可以在宝塔「Docker → 项目/编排」中导入 `docker-compose.yml`，但不同宝塔版本界面差异较大，命令行方式最稳定。
 
