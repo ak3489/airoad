@@ -29,8 +29,9 @@ services:
       context: .
       dockerfile: web/Dockerfile
     restart: unless-stopped
+    # 默认只绑定本机，由宝塔 Nginx 按域名反代；不用宝塔时改为 "8080:80"
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       api:
         condition: service_healthy

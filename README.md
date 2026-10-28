@@ -104,22 +104,103 @@ npm run build         # server tsc + web vue-tsc & vite build
 
 后端测试使用临时 MongoDB（27019 端口）并在结束后清理；测试会验证 API 行为、任务状态机、步骤解锁与回退、周复盘校验、选修任务统计、资料核验字段与 JSON 备份导出。
 
-## Docker 部署
+## Docker 部署（宝塔面板 + 域名）
+
+前置条件：域名已解析到服务器；宝塔已安装 Nginx；宿主机 MongoDB 已允许容器访问（见第 5 步）。
+
+### 1. 上传项目并启动容器
 
 ```bash
-cp .env.example .env    # 按需修改 WEB_ORIGIN；AI 配置在网页设置里填写
+cd /www/wwwroot
+# git clone 或上传源码压缩包，解压到 /www/wwwroot/airoad
+cd airoad
+cp .env.example .env
+```
+
+编辑 `.env`，把 `WEB_ORIGIN` 改成浏览器实际访问的地址（含协议，结尾不要带斜杠）：
+
+```dotenv
+WEB_ORIGIN=https://learn.example.com
+```
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl http://127.0.0.1:8080/api/health
+```
+
+返回 `"db":"connected"` 说明容器和 MongoDB 都正常。compose 只启动 `api` 与 `web`，并将 `web` 绑定在 `127.0.0.1:8080`，公网访问统一经过宝塔 Nginx。
+
+- 首次启动检测到 `airoad` 空库会自动写入种子内容，已有数据不覆盖
+- 学习数据保存在宿主机 MongoDB，不在容器卷里，升级镜像不会丢失
+
+### 2. 在宝塔添加站点
+
+网站 → 添加站点：
+
+- 域名：`learn.example.com`
+- PHP 版本：纯静态
+- 不创建数据库、不创建 FTP
+
+### 3. 配置反向代理
+
+站点设置 → 反向代理 → 添加反向代理：
+
+- 代理名称：`airoad`
+- 目标 URL：`http://127.0.0.1:8080`
+- 发送域名：`$host`
+
+保存后打开该代理的「配置文件」，确认配置中包含：
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_buffering off;
+proxy_cache off;
+proxy_read_timeout 300s;
+```
+
+`proxy_buffering off` 是 SSE 必需的：缺少时 AI 助手的流式回答会攒到最后一次性出现，长回答还可能超时。
+
+### 4. 开启 HTTPS
+
+站点设置 → SSL → Let's Encrypt 申请证书 → 开启「强制 HTTPS」。然后把 `.env` 改为 `WEB_ORIGIN=https://learn.example.com`，重新创建容器让环境变量生效：
+
+```bash
+docker compose up -d
+```
+
+注意 `docker compose restart` 不会重新读取 `.env`。
+
+### 5. 防火墙
+
+- 宝塔「安全」和云厂商安全组只放行 80 / 443
+- 不要放行 8080 与 27017；compose 已将 web 限制在 `127.0.0.1`
+- MongoDB 需监听 Docker 网关（如 `bindIp: 127.0.0.1,172.17.0.1`），或监听 `0.0.0.0` 并用防火墙限制来源
+
+### 6. 更新部署
+
+```bash
+cd /www/wwwroot/airoad
+git pull                # 或重新上传源码，注意不要覆盖 .env
 docker compose up -d --build
 ```
 
-- 只启动 `api` 与 `web` 两个容器，复用宿主机已有的 MongoDB（默认 `mongodb://host.docker.internal:27017/airoad`）
-- 宿主机 MongoDB 需允许容器访问：`net.bindIp` 加入 Docker 网关（如 `127.0.0.1,172.17.0.1`），或监听 `0.0.0.0` 并用防火墙只放行 Docker 网段
-- 开启认证时在 `.env` 设置 `MONGODB_URI`，例如 `mongodb://user:pass@host.docker.internal:27017/airoad?authSource=admin`
-- 访问 http://localhost:8080
-- 首次启动自动建库并写入种子内容；已有数据不会被覆盖，数据保存在宿主机 MongoDB 的 `airoad` 库
-- nginx 将 `/api` 反代到 api 服务，SSE 关闭缓冲，聊天逐字返回
-- 升级镜像不影响学习数据，数据不在容器卷里
+### 常见问题
 
-> 注意：`WEB_ORIGIN` 应与浏览器实际访问地址一致（默认 `http://localhost:8080`），否则跨域请求会被拒绝。
+| 现象 | 原因与处理 |
+| --- | --- |
+| 502 Bad Gateway | 容器未启动或端口不对：`docker compose ps`、`docker compose logs api`、`curl http://127.0.0.1:8080/api/health` |
+| 接口返回 `Origin not allowed` | `.env` 的 `WEB_ORIGIN` 与地址栏不一致（协议/域名/端口），改完执行 `docker compose up -d` |
+| AI 回答不逐字输出 | 宝塔反代缺少 `proxy_buffering off;`，保存后重载 Nginx |
+| AI 长回答中途断开 | 反代的 `proxy_read_timeout` 太短，调整为 `300s` |
+| 容器连不上 MongoDB | MongoDB 只监听了 `127.0.0.1`，需加入 Docker 网关或监听 `0.0.0.0` 并限制来源 |
+
+> 也可以在宝塔「Docker → 项目/编排」中导入 `docker-compose.yml`，但不同宝塔版本界面差异较大，命令行方式最稳定。
 
 ## AI 与安全边界
 
