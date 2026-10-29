@@ -5,6 +5,7 @@ import { phases } from './phases';
 import { resources } from './resources';
 import { seedResourcesVerifiedAt } from './types';
 import { projectSeed } from './project';
+import { referenceCount, referenceFor } from './references';
 import { phase1Tasks } from './tasks/phase1';
 import { phase2Tasks } from './tasks/phase2';
 import { phase3Tasks } from './tasks/phase3';
@@ -15,6 +16,9 @@ import { phase7Tasks } from './tasks/phase7';
 import type { SeedStep, SeedTask } from './types';
 
 const planSlug = 'main-plan';
+
+// 每次课程内容（步骤、参考答案、资料）有实质更新时递增，启动时会自动刷新种子内容并保留学习进度。
+export const SEED_CONTENT_VERSION = 2;
 
 const allTasks: SeedTask[] = [
   ...phase1Tasks,
@@ -39,11 +43,17 @@ function dueDateFor(startDate: Date, week: number, day: number): Date {
   return date;
 }
 
-function mergeSteps(existing: { key: string; status?: string; resultLog?: string; errorLog?: string; notes?: string; completedAt?: Date | null }[] | undefined, seedSteps: SeedStep[]) {
-  return seedSteps.map((step) => {
+function mergeSteps(
+  existing: { key: string; status?: string; resultLog?: string; errorLog?: string; notes?: string; completedAt?: Date | null }[] | undefined,
+  seedSteps: SeedStep[],
+  taskSlug: string
+) {
+  return seedSteps.map((step, index) => {
     const prev = existing?.find((item) => item.key === step.key);
     return {
       ...step,
+      order: index + 1,
+      reference: referenceFor(taskSlug, step.key),
       status: prev?.status === 'done' ? 'done' : 'todo',
       resultLog: prev?.resultLog ?? '',
       errorLog: prev?.errorLog ?? '',
@@ -67,6 +77,7 @@ export async function seedDatabase() {
         summary: '以真实项目为主线，从模型 API 到可部署的企业知识库 AI 客服。每天 1–2 小时，12 周完成第一阶段。',
         totalWeeks: 12,
         dailyMinutes: 90,
+        contentVersion: SEED_CONTENT_VERSION,
       },
       $setOnInsert: { startDate, status: 'active' },
     },
@@ -125,7 +136,7 @@ export async function seedDatabase() {
           resourceSlugs: task.resourceSlugs,
           prerequisiteSlugs: task.prerequisiteSlugs ?? [],
           optional: task.optional ?? false,
-          steps: mergeSteps(existing?.steps as never, task.steps),
+          steps: mergeSteps(existing?.steps as never, task.steps, task.slug),
           ...(task.optional ? { dueDate: null } : {}),
         },
         $setOnInsert: {
@@ -204,6 +215,7 @@ export async function seedDatabase() {
     phases: phases.length,
     tasks: allTasks.length,
     steps: allTasks.reduce((sum, task) => sum + task.steps.length, 0),
+    references: referenceCount(),
     resources: resources.length,
     milestones: projectSeed.milestones.length,
     projectTasks: projectSeed.tasks.length,

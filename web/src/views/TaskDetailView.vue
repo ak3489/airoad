@@ -597,7 +597,7 @@ onBeforeUnmount(() => {
           <section class="steps-section">
             <div class="section-head">
               <div class="panel-title"><ListChecks :size="15" /> 步骤工作台</div>
-              <span class="mono text-xs faint">完成当前步骤后解锁下一个</span>
+              <span class="mono text-xs faint">完成当前步骤后解锁下一个 · 卡住时展开步骤里的「参考答案」</span>
             </div>
 
             <div v-if="!task.steps.length" class="mini-empty">
@@ -620,6 +620,7 @@ onBeforeUnmount(() => {
                   <div class="step-title">{{ step.title }}</div>
                   <div class="step-goal">{{ step.goal }}</div>
                 </div>
+                <span v-if="step.reference" class="step-answer mono">参考答案</span>
                 <span class="step-state mono" :class="step.status">{{ stepStatusLabel(step) }}</span>
                 <ChevronDown :size="16" class="step-chev" />
               </button>
@@ -676,6 +677,50 @@ onBeforeUnmount(() => {
                     <li v-for="item in step.acceptance" :key="item"><Circle :size="10" /><span>{{ item }}</span></li>
                   </ul>
                 </template>
+
+                <details v-if="step.reference" class="solution">
+                  <summary class="solution-head">
+                    <span class="solution-title"><Sparkles :size="13" /> 参考答案</span>
+                    <span class="solution-hint">先自己试，卡住了再展开对照</span>
+                    <ChevronDown :size="14" class="solution-chev" />
+                  </summary>
+                  <div class="solution-body">
+                    <MarkdownView :source="step.reference.approach" />
+
+                    <template v-if="step.reference.commands && step.reference.commands.length">
+                      <div class="block-label mono mt-16"><Terminal :size="12" /> 可直接执行的命令</div>
+                      <div class="command-list">
+                        <div v-for="command in step.reference.commands" :key="command" class="command-row">
+                          <span class="command-prompt mono">$</span>
+                          <code class="mono">{{ command }}</code>
+                          <button class="copy-btn" type="button" title="复制命令" @click="copyCommand(command)">
+                            <Copy :size="12" />
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-if="step.reference.files && step.reference.files.length">
+                      <div class="block-label mono mt-16"><FileCode2 :size="12" /> 参考实现</div>
+                      <div class="solution-files">
+                        <CodeBlock
+                          v-for="(file, fileIndex) in step.reference.files"
+                          :key="fileIndex"
+                          :code="file.content"
+                          :language="file.language"
+                          :file-path="file.filePath"
+                        />
+                      </div>
+                    </template>
+
+                    <template v-if="step.reference.verify && step.reference.verify.length">
+                      <div class="block-label mono mt-16">做到这些才算完成</div>
+                      <ul class="accept-list">
+                        <li v-for="item in step.reference.verify" :key="item"><CheckCircle2 :size="12" /><span>{{ item }}</span></li>
+                      </ul>
+                    </template>
+                  </div>
+                </details>
 
                 <div class="log-grid">
                   <div class="field">
@@ -777,7 +822,7 @@ onBeforeUnmount(() => {
                 记录
               </button>
             </div>
-            <p class="tiny-note">计时只在当前页面有效。记录后才会写入真实学习投入。</p>
+            <p class="tiny-note">计时按任务保存在当前浏览器，刷新或切换页面不会丢；记录后才写入学习投入。</p>
           </section>
 
           <section class="rail-card">
@@ -1300,6 +1345,18 @@ onBeforeUnmount(() => {
   background: var(--accent-soft);
 }
 
+.step-answer {
+  flex-shrink: 0;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border: 1px solid rgba(147, 197, 253, 0.24);
+  border-radius: 4px;
+  background: rgba(147, 197, 253, 0.06);
+  color: var(--blue);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .step-chev {
   color: var(--faint);
   margin-top: 4px;
@@ -1413,6 +1470,82 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.solution {
+  margin-top: 16px;
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  border-radius: 9px;
+  background: rgba(147, 197, 253, 0.035);
+  overflow: hidden;
+}
+
+.solution-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.solution-head::-webkit-details-marker {
+  display: none;
+}
+
+.solution-head:hover {
+  background: rgba(147, 197, 253, 0.05);
+}
+
+.solution-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.solution-hint {
+  flex: 1;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.solution-chev {
+  color: var(--faint);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.solution[open] .solution-chev {
+  transform: rotate(180deg);
+}
+
+.solution-body {
+  padding: 2px 14px 14px;
+  border-top: 1px dashed rgba(147, 197, 253, 0.18);
+}
+
+.solution-body :deep(.markdown) {
+  margin-top: 10px;
+}
+
+.solution-body :deep(.markdown p),
+.solution-body :deep(.markdown li) {
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.solution-body :deep(.markdown table) {
+  font-size: 11.5px;
+}
+
+.solution-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .log-grid {

@@ -19,17 +19,21 @@ export const phase4Tasks: SeedTask[] = [
       {
         key: 'p4-t1-s1',
         title: '理解三类角色与 JSON-RPC',
-        goal: '画出一次工具调用的消息路径。',
-        principle: 'Host 运行模型与 UI，Client 维护与 Server 的一对一连接，Server 提供 tools/resources/prompts。',
-        instructions: '阅读官方介绍与架构页，用自己的话写出 initialize → tools/list → tools/call 的请求响应序列，存入笔记。',
+        goal: '画出一次工具调用的消息路径，知道每条消息由谁发给谁。',
+        principle:
+          'Host 是带 UI 的应用（例如你的客服 Agent），Client 是 Host 内部的一条连接，Server 提供 tools/resources/prompts。MCP 用 JSON-RPC 2.0 传输，stdin/stdout 只是其中一种传输方式。',
+        setup: '打开任务右侧「资料」里的 MCP 官方介绍与架构页，准备一页空白笔记。',
+        instructions:
+          '不用背协议全文，只回答四个问题并写进任务笔记：\n\n1. `initialize` 由谁发给谁，双方交换了什么信息？\n2. Client 如何知道 Server 支持哪些工具？写出方法名。\n3. 调用工具时，方法名和参数长什么样？\n4. 能力协商失败时，Client 应该停止哪些调用？\n\n最后画一条顺序线：`Client → initialize → Server → capabilities → Client → tools/list → Client → tools/call`。写完对照参考答案检查方向有没有写反。',
         acceptance: ['序列包含方法名与方向', '能说明能力协商的作用'],
       },
       {
         key: 'p4-t1-s2',
         title: '初始化 MCP Server 工程',
-        goal: '安装官方 TypeScript SDK 并建立客服工具入口。',
+        goal: '安装官方 TypeScript SDK，让一个返回固定订单状态的只读工具能被发现。',
+        setup: '已经完成第一阶段的 agent-lab 仓库，终端当前目录是 agent-lab。不需要数据库，也不要连真实订单系统。',
         instructions:
-          '在 agent-lab 中新建 src/mcp/server.ts，安装 @modelcontextprotocol/sdk 与 zod。使用 McpServer + StdioServerTransport，先实现一个返回固定订单状态的只读工具。SDK 版本以 package.json 实际安装为准并记录。',
+          '按顺序做四件事：\n\n1. 安装依赖：`npm i @modelcontextprotocol/sdk zod`，然后运行 `npm ls @modelcontextprotocol/sdk` 记下实际版本。\n2. 新建 `src/mcp/server.ts`，使用 `McpServer` + `StdioServerTransport` 注册 `get_order_status`，数据写死即可。完整可对照的代码见下方「参考代码」。\n3. 启动 `npx tsx src/mcp/server.ts`。终端停住是在等 Client 发消息，属于正常现象，按 Ctrl+C 退出。\n4. 用 `npx @modelcontextprotocol/inspector npx tsx src/mcp/server.ts` 打开 Inspector，点 Connect → List Tools，应能看到 `get_order_status`。\n\n两个硬性要求：stdout 只能留给协议，日志一律 `console.error` 写 stderr；工具描述要写清楚「什么时候用」，而不是只写「查询订单」。',
         code: {
           language: 'typescript',
           filePath: 'src/mcp/server.ts',
@@ -66,9 +70,11 @@ export const phase4Tasks: SeedTask[] = [
       {
         key: 'p4-t1-s3',
         title: '手动完成一次协议交互',
-        goal: '用测试客户端列出工具并调用。',
-        instructions: '写一个最小 Client（下一步会复用），连接 server，调用 listTools 与 callTool，保存响应。',
-        acceptance: ['看到 get_order_status', '调用返回结构化文本'],
+        goal: '写一个最小 Client，真正通过 MCP 协议调用一次工具。',
+        setup: '上一步的 server.ts 能单独启动。',
+        instructions:
+          '1. 新建 `src/mcp/client.ts`，用 `StdioClientTransport` 以子进程方式启动 server.ts，再创建 `Client` 并 `connect`。\n2. 调用 `listTools()`，打印所有工具名。\n3. 调用 `callTool({ name: "get_order_status", arguments: { orderId: "ORD-100234" } })`，把完整响应打印出来。\n4. 运行 `npx tsx src/mcp/client.ts`，把输出贴进本步骤的「运行结果 / 证据」。\n5. 再把 orderId 改成 `BAD-1` 跑一次，观察参数校验失败时 Client 是否崩溃。\n\n完整代码在下方「参考答案」里，卡住时再展开。不要复制后直接算完成，至少改一个订单号验证自己理解参数怎么传。',
+        acceptance: ['看到 get_order_status', '调用返回结构化文本', '非法参数不会让 Client 崩溃'],
       },
     ],
   },

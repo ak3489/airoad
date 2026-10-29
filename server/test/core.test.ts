@@ -101,6 +101,18 @@ describe('初始概览与种子数据', () => {
     expect(data.phases[1].progress.status).toBe('locked');
   });
 
+  test('步骤带顺序与参考答案', async () => {
+    const task = await LearningTask.findOne({ slug: 'p4-t1-mcp-basics' }).lean();
+    expect(task).not.toBeNull();
+    const steps = [...(task?.steps ?? [])].sort((a, b) => a.order - b.order);
+    expect(steps.map((step) => step.order)).toEqual([1, 2, 3]);
+    expect(steps.every((step) => Boolean(step.reference?.approach))).toBe(true);
+    expect(steps[1].reference?.files?.length).toBeGreaterThan(0);
+
+    const detail = (await api('GET', '/api/tasks/p4-t1-mcp-basics')).json();
+    expect(detail.task.steps[0].reference.approach).toContain('clientInfo');
+  });
+
   test('旧群晖任务以选修形式保留，不计入主线统计', async () => {
     const tasks = (await api('GET', '/api/tasks')).json();
     expect(tasks).toHaveLength(55);

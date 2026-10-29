@@ -104,6 +104,19 @@ export interface StepPitfall {
   solution: string;
 }
 
+export interface StepReferenceFile {
+  filePath?: string;
+  language: string;
+  content: string;
+}
+
+export interface StepReference {
+  approach: string;
+  commands?: string[];
+  files?: StepReferenceFile[];
+  verify?: string[];
+}
+
 export interface TaskStep {
   key: string;
   order: number;
@@ -116,6 +129,7 @@ export interface TaskStep {
   commands?: string[];
   expectedOutput?: string;
   pitfalls?: StepPitfall[];
+  reference?: StepReference | null;
   acceptance: string[];
   status: 'todo' | 'done';
   resultLog?: string;

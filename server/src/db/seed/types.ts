@@ -1,3 +1,16 @@
+export interface SeedReferenceFile {
+  filePath?: string;
+  language: string;
+  content: string;
+}
+
+export interface SeedStepReference {
+  approach: string;
+  commands?: string[];
+  files?: SeedReferenceFile[];
+  verify?: string[];
+}
+
 export interface SeedStep {
   key: string;
   title: string;

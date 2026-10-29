@@ -12,6 +12,19 @@ export interface StepPitfall {
   solution: string;
 }
 
+export interface StepReferenceFile {
+  filePath?: string;
+  language: string;
+  content: string;
+}
+
+export interface StepReference {
+  approach: string;
+  commands?: string[];
+  files?: StepReferenceFile[];
+  verify?: string[];
+}
+
 export interface TaskStep {
   key: string;
   order: number;
@@ -24,6 +37,7 @@ export interface TaskStep {
   commands?: string[];
   expectedOutput?: string;
   pitfalls?: StepPitfall[];
+  reference?: StepReference | null;
   acceptance: string[];
   status: 'todo' | 'done';
   resultLog?: string;
@@ -72,6 +86,25 @@ const pitfallSchema = new Schema<StepPitfall>(
   { _id: false }
 );
 
+const referenceFileSchema = new Schema<StepReferenceFile>(
+  {
+    filePath: { type: String, default: '' },
+    language: { type: String, default: 'bash' },
+    content: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const referenceSchema = new Schema<StepReference>(
+  {
+    approach: { type: String, required: true },
+    commands: { type: [String], default: [] },
+    files: { type: [referenceFileSchema], default: [] },
+    verify: { type: [String], default: [] },
+  },
+  { _id: false }
+);
+
 const stepSchema = new Schema<TaskStep>(
   {
     key: { type: String, required: true },
@@ -95,6 +128,7 @@ const stepSchema = new Schema<TaskStep>(
     commands: { type: [String], default: [] },
     expectedOutput: { type: String, default: '' },
     pitfalls: { type: [pitfallSchema], default: [] },
+    reference: { type: referenceSchema, default: undefined },
     acceptance: { type: [String], default: [] },
     status: { type: String, enum: ['todo', 'done'], default: 'todo' },
     resultLog: { type: String, default: '' },

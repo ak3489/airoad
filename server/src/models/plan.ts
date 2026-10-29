@@ -13,6 +13,7 @@ export interface LearningPlanDoc {
   totalWeeks: number;
   dailyMinutes: number;
   status: (typeof PLAN_STATUSES)[number];
+  contentVersion: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -27,6 +28,7 @@ const planSchema = new Schema<LearningPlanDoc>(
     totalWeeks: { type: Number, default: 12 },
     dailyMinutes: { type: Number, default: 90 },
     status: { type: String, enum: PLAN_STATUSES, default: 'active' },
+    contentVersion: { type: Number, default: 0 },
   },
   options
 );
