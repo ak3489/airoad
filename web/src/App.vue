@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   FlaskConical,
   FolderKanban,
+  Github,
   LayoutDashboard,
   Library,
   ListChecks,
@@ -142,6 +143,16 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
           <span>{{ apiOnline === false ? 'API 离线' : apiOnline ? 'API 在线' : '检测中…' }}</span>
           <span style="margin-left: auto">v{{ settings?.app.version || '0.1.0' }}</span>
         </div>
+        <a
+          class="sidebar-git"
+          href="https://github.com/ak3489/airoad"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="https://github.com/ak3489/airoad"
+        >
+          <Github :size="13" />
+          <span>github.com/ak3489/airoad</span>
+        </a>
       </div>
     </aside>
     <div v-if="sidebarOpen" class="sidebar-scrim" @click="sidebarOpen = false" />
