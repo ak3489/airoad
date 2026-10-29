@@ -108,20 +108,24 @@ export function computeStreak(recordDates: string[], now = new Date()): number {
   return streak;
 }
 
-export async function getOverview() {
-  const plan = await LearningPlan.findOne({ slug: 'main-plan' }).lean();
-  if (!plan) throw new Error('学习计划尚未初始化，请先运行 npm run seed');
+export async function getOverview(profileId: string) {
+  const plan = await LearningPlan.findOne({ profileId, slug: 'main-plan' }).lean();
+  if (!plan) throw new Error('学习计划尚未初始化，请刷新页面重新建立学习档案');
 
   const [phases, tasks, records, project, milestones, projectTasks, recentNotes, openLogs] =
     await Promise.all([
-      LearningPhase.find({ planSlug: plan.slug }).sort({ order: 1 }).lean(),
-      LearningTask.find({}).sort({ week: 1, order: 1 }).lean<LeanTask[]>(),
-      LearningRecord.find({}).select({ taskSlug: 1, date: 1, minutes: 1, summary: 1 }).lean(),
-      Project.findOne({ slug: MAIN_PROJECT_SLUG }).lean(),
-      Milestone.find({ projectSlug: MAIN_PROJECT_SLUG }).sort({ order: 1 }).lean(),
-      ProjectTask.find({ projectSlug: MAIN_PROJECT_SLUG }).sort({ order: 1 }).lean(),
-      Note.find({ kind: 'issue' }).sort({ createdAt: -1 }).limit(5).lean(),
-      ProjectLog.find({ status: 'open' }).sort({ createdAt: -1 }).limit(5).lean(),
+      LearningPhase.find({ profileId, planSlug: plan.slug }).sort({ order: 1 }).lean(),
+      LearningTask.find({ profileId }).sort({ week: 1, order: 1 }).lean<LeanTask[]>(),
+      LearningRecord.find({ profileId })
+        .select({ taskSlug: 1, date: 1, minutes: 1, summary: 1 })
+        .lean(),
+      Project.findOne({ profileId, slug: MAIN_PROJECT_SLUG }).lean(),
+      Milestone.find({ profileId, projectSlug: MAIN_PROJECT_SLUG }).sort({ order: 1 }).lean(),
+      ProjectTask.find({ profileId, projectSlug: MAIN_PROJECT_SLUG })
+        .sort({ order: 1 })
+        .lean(),
+      Note.find({ profileId, kind: 'issue' }).sort({ createdAt: -1 }).limit(5).lean(),
+      ProjectLog.find({ profileId, status: 'open' }).sort({ createdAt: -1 }).limit(5).lean(),
     ]);
 
   const phaseTitle = new Map(phases.map((phase) => [phase.slug, phase.title]));
@@ -217,7 +221,7 @@ export async function getOverview() {
       : 0;
 
   const recordTask = new Map(tasks.map((task) => [task.slug, task.title]));
-  const recentRecords = await LearningRecord.find({})
+  const recentRecords = await LearningRecord.find({ profileId })
     .sort({ createdAt: -1 })
     .limit(6)
     .lean();

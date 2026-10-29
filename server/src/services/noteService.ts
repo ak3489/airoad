@@ -8,14 +8,17 @@ function ensureId(id: string) {
   if (!mongoose.isValidObjectId(id)) notFound('笔记不存在');
 }
 
-export async function listNotes(query: {
-  q?: string;
-  kind?: string;
-  task?: string;
-  project?: string;
-  tag?: string;
-}) {
-  const filter: Record<string, unknown> = {};
+export async function listNotes(
+  profileId: string,
+  query: {
+    q?: string;
+    kind?: string;
+    task?: string;
+    project?: string;
+    tag?: string;
+  }
+) {
+  const filter: Record<string, unknown> = { profileId };
   if (query.kind) filter.kind = query.kind;
   if (query.task) filter.taskSlug = query.task;
   if (query.project) filter.projectSlug = query.project;
@@ -32,28 +35,32 @@ export async function listNotes(query: {
   }));
 }
 
-export async function getNote(id: string) {
+export async function getNote(profileId: string, id: string) {
   ensureId(id);
-  const note = await Note.findById(id).lean();
+  const note = await Note.findOne({ _id: id, profileId }).lean();
   if (!note) notFound('笔记不存在');
   return note;
 }
 
-export async function createNote(input: Record<string, unknown>) {
-  const note = await Note.create(input);
+export async function createNote(profileId: string, input: Record<string, unknown>) {
+  const note = await Note.create({ ...input, profileId });
   return note.toObject();
 }
 
-export async function patchNote(id: string, patch: Record<string, unknown>) {
+export async function patchNote(profileId: string, id: string, patch: Record<string, unknown>) {
   ensureId(id);
-  const note = await Note.findByIdAndUpdate(id, { $set: patch }, { new: true }).lean();
+  const note = await Note.findOneAndUpdate(
+    { _id: id, profileId },
+    { $set: patch },
+    { new: true }
+  ).lean();
   if (!note) notFound('笔记不存在');
   return note;
 }
 
-export async function deleteNote(id: string) {
+export async function deleteNote(profileId: string, id: string) {
   ensureId(id);
-  const note = await Note.findByIdAndDelete(id);
+  const note = await Note.findOneAndDelete({ _id: id, profileId });
   if (!note) notFound('笔记不存在');
   return { deleted: true };
 }

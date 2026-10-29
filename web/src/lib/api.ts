@@ -1,4 +1,6 @@
 import { aiRequestHeaders } from './aiConfig';
+import { API_BASE } from './apiBase';
+import { ensureProfile, profileError, profileHeaders } from './profile';
 
 export class ApiError extends Error {
   status: number;
@@ -11,15 +13,20 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || '/api';
+async function requireProfile(): Promise<void> {
+  if (await ensureProfile()) return;
+  throw new ApiError(0, profileError.value || '学习档案尚未就绪，请稍后重试');
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  await requireProfile();
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...profileHeaders(),
         ...(options.headers || {}),
       },
     });
@@ -61,9 +68,10 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   download: async (path: string, filename: string) => {
+    await requireProfile();
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}${path}`);
+      response = await fetch(`${API_BASE}${path}`, { headers: profileHeaders() });
     } catch {
       throw new ApiError(0, '无法连接后端服务，请确认 API 已启动。');
     }
@@ -102,11 +110,12 @@ export async function streamAiChat(
   handlers: StreamHandlers,
   signal?: AbortSignal
 ): Promise<void> {
+  await requireProfile();
   let response: Response;
   try {
     response = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...aiRequestHeaders() },
+      headers: { 'Content-Type': 'application/json', ...profileHeaders(), ...aiRequestHeaders() },
       body: JSON.stringify(payload),
       signal,
     });

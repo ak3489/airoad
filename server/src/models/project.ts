@@ -7,6 +7,7 @@ export const PROJECT_TASK_STATUSES = ['backlog', 'doing', 'review', 'done'] as c
 export const LOG_TYPES = ['decision', 'issue', 'test'] as const;
 
 export interface ProjectDoc {
+  profileId: string;
   slug: string;
   name: string;
   goal: string;
@@ -23,6 +24,7 @@ export interface ProjectDoc {
 }
 
 export interface MilestoneDoc {
+  profileId: string;
   slug: string;
   projectSlug: string;
   order: number;
@@ -36,6 +38,7 @@ export interface MilestoneDoc {
 }
 
 export interface ProjectTaskDoc {
+  profileId: string;
   slug: string;
   projectSlug: string;
   milestoneSlug: string;
@@ -52,6 +55,7 @@ export interface ProjectTaskDoc {
 }
 
 export interface ProjectLogDoc {
+  profileId: string;
   projectSlug: string;
   type: (typeof LOG_TYPES)[number];
   title: string;
@@ -63,7 +67,8 @@ export interface ProjectLogDoc {
 
 const projectSchema = new Schema<ProjectDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     name: { type: String, required: true },
     goal: { type: String, required: true },
     repoUrl: { type: String, default: '' },
@@ -80,7 +85,8 @@ const projectSchema = new Schema<ProjectDoc>(
 
 const milestoneSchema = new Schema<MilestoneDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     projectSlug: { type: String, required: true, index: true },
     order: { type: Number, required: true },
     title: { type: String, required: true },
@@ -94,7 +100,8 @@ const milestoneSchema = new Schema<MilestoneDoc>(
 
 const projectTaskSchema = new Schema<ProjectTaskDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     projectSlug: { type: String, required: true, index: true },
     milestoneSlug: { type: String, default: '', index: true },
     order: { type: Number, default: 0 },
@@ -111,6 +118,7 @@ const projectTaskSchema = new Schema<ProjectTaskDoc>(
 
 const projectLogSchema = new Schema<ProjectLogDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     projectSlug: { type: String, required: true, index: true },
     type: { type: String, enum: LOG_TYPES, required: true },
     title: { type: String, required: true },
@@ -119,6 +127,11 @@ const projectLogSchema = new Schema<ProjectLogDoc>(
   },
   { timestamps: true, versionKey: false }
 );
+
+projectSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+milestoneSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+projectTaskSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+projectLogSchema.index({ profileId: 1, createdAt: -1 });
 
 export const Project = (models.Project as mongoose.Model<ProjectDoc> | undefined) ?? model<ProjectDoc>('Project', projectSchema);
 export const Milestone =

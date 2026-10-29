@@ -3,6 +3,10 @@ import { TASK_STATUSES } from './models/task';
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式必须为 YYYY-MM-DD');
 
+export const profileOpenSchema = z.object({
+  code: z.string().trim().max(64).optional(),
+});
+
 export const taskStatusSchema = z.enum(TASK_STATUSES);
 
 export const taskListQuerySchema = z.object({

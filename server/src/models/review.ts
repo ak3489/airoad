@@ -5,6 +5,7 @@ const options = { timestamps: true, versionKey: false } as const;
 export const REVIEW_STATUSES = ['draft', 'final'] as const;
 
 export interface WeeklyReviewDoc {
+  profileId: string;
   planSlug: string;
   week: number;
   status: (typeof REVIEW_STATUSES)[number];
@@ -23,6 +24,7 @@ export interface WeeklyReviewDoc {
 }
 
 export interface EvaluationDoc {
+  profileId: string;
   scope: 'phase' | 'project' | 'task' | 'week';
   targetSlug: string;
   title: string;
@@ -38,6 +40,7 @@ export interface EvaluationDoc {
 
 const weeklyReviewSchema = new Schema<WeeklyReviewDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     planSlug: { type: String, required: true },
     week: { type: Number, required: true },
     status: { type: String, enum: REVIEW_STATUSES, default: 'draft' },
@@ -55,10 +58,11 @@ const weeklyReviewSchema = new Schema<WeeklyReviewDoc>(
   options
 );
 
-weeklyReviewSchema.index({ planSlug: 1, week: 1 }, { unique: true });
+weeklyReviewSchema.index({ profileId: 1, planSlug: 1, week: 1 }, { unique: true });
 
 const evaluationSchema = new Schema<EvaluationDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     scope: { type: String, enum: ['phase', 'project', 'task', 'week'], required: true },
     targetSlug: { type: String, required: true, index: true },
     title: { type: String, required: true },
@@ -71,6 +75,8 @@ const evaluationSchema = new Schema<EvaluationDoc>(
   },
   options
 );
+
+evaluationSchema.index({ profileId: 1, evaluatedAt: -1 });
 
 export const WeeklyReview =
   (models.WeeklyReview as mongoose.Model<WeeklyReviewDoc> | undefined) ?? model<WeeklyReviewDoc>('WeeklyReview', weeklyReviewSchema);

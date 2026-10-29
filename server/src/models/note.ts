@@ -5,6 +5,7 @@ const options = { timestamps: true, versionKey: false } as const;
 export const NOTE_KINDS = ['note', 'issue', 'snippet', 'summary', 'interview'] as const;
 
 export interface NoteDoc {
+  profileId: string;
   title: string;
   content: string;
   kind: (typeof NOTE_KINDS)[number];
@@ -23,6 +24,7 @@ export interface NoteDoc {
 
 const noteSchema = new Schema<NoteDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     content: { type: String, default: '' },
     kind: { type: String, enum: NOTE_KINDS, default: 'note', index: true },
@@ -39,6 +41,7 @@ const noteSchema = new Schema<NoteDoc>(
   options
 );
 
+noteSchema.index({ profileId: 1, updatedAt: -1 });
 noteSchema.index({ title: 'text', content: 'text', tags: 'text', question: 'text' });
 
 export const Note = (models.Note as mongoose.Model<NoteDoc> | undefined) ?? model<NoteDoc>('Note', noteSchema);

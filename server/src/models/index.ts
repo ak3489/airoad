@@ -5,3 +5,4 @@ export { Note, NOTE_KINDS } from './note';
 export { Project, Milestone, ProjectTask, ProjectLog, MILESTONE_STATUSES } from './project';
 export { WeeklyReview, Evaluation } from './review';
 export { AIConversation } from './conversation';
+export { Profile, LEGACY_PROFILE_ID } from './profile';

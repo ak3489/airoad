@@ -28,18 +28,18 @@ const SYSTEM_PROMPT = [
   '6. 不要索取或复述 API Key、密码等敏感信息。',
 ].join('\n');
 
-export async function buildAIContext(input: AIContextInput) {
+export async function buildAIContext(profileId: string, input: AIContextInput) {
   const sections: string[] = [];
   let title = '学习助手';
 
   if (input.scope === 'task' && input.taskSlug) {
-    const task = await LearningTask.findOne({ slug: input.taskSlug }).lean();
+    const task = await LearningTask.findOne({ profileId, slug: input.taskSlug }).lean();
     if (task) {
       title = `任务：${task.title}`;
-      const resources = await Resource.find({ slug: { $in: task.resourceSlugs } })
+      const resources = await Resource.find({ profileId, slug: { $in: task.resourceSlugs } })
         .select({ title: 1, url: 1, kind: 1 })
         .lean();
-      const records = await LearningRecord.find({ taskSlug: task.slug })
+      const records = await LearningRecord.find({ profileId, taskSlug: task.slug })
         .sort({ createdAt: -1 })
         .limit(5)
         .lean();
@@ -82,11 +82,11 @@ export async function buildAIContext(input: AIContextInput) {
   }
 
   if (input.scope === 'phase' && input.phaseSlug) {
-    const phase = await LearningPhase.findOne({ slug: input.phaseSlug }).lean();
+    const phase = await LearningPhase.findOne({ profileId, slug: input.phaseSlug }).lean();
     if (phase) {
       title = `阶段：${phase.title}`;
-      const tasks = await LearningTask.find({ phaseSlug: phase.slug }).sort({ order: 1 }).lean();
-      const evaluations = await Evaluation.find({ scope: 'phase', targetSlug: phase.slug })
+      const tasks = await LearningTask.find({ profileId, phaseSlug: phase.slug }).sort({ order: 1 }).lean();
+      const evaluations = await Evaluation.find({ profileId, scope: 'phase', targetSlug: phase.slug })
         .sort({ evaluatedAt: -1 })
         .limit(2)
         .lean();
@@ -124,13 +124,13 @@ export async function buildAIContext(input: AIContextInput) {
 
   if (input.scope === 'project') {
     const slug = input.projectSlug || MAIN_PROJECT_SLUG;
-    const project = await Project.findOne({ slug }).lean();
+    const project = await Project.findOne({ profileId, slug }).lean();
     if (project) {
       title = `项目：${project.name}`;
       const [milestones, tasks, logs] = await Promise.all([
-        Milestone.find({ projectSlug: slug }).sort({ order: 1 }).lean(),
-        ProjectTask.find({ projectSlug: slug }).sort({ order: 1 }).lean(),
-        ProjectLog.find({ projectSlug: slug }).sort({ createdAt: -1 }).limit(10).lean(),
+        Milestone.find({ profileId, projectSlug: slug }).sort({ order: 1 }).lean(),
+        ProjectTask.find({ profileId, projectSlug: slug }).sort({ order: 1 }).lean(),
+        ProjectLog.find({ profileId, projectSlug: slug }).sort({ createdAt: -1 }).limit(10).lean(),
       ]);
       sections.push(
         [
@@ -166,16 +166,19 @@ export async function buildAIContext(input: AIContextInput) {
   }
 
   if (input.scope === 'review') {
-    const plan = await LearningPlan.findOne({ slug: 'main-plan' }).lean();
+    const plan = await LearningPlan.findOne({ profileId, slug: 'main-plan' }).lean();
     if (plan) {
       const week = input.week ?? currentWeekOf(plan.startDate, plan.totalWeeks);
       title = `第 ${week} 周复盘`;
       const range = weekRange(plan.startDate, week);
       const [tasks, records, review, notes] = await Promise.all([
-        LearningTask.find({ week }).sort({ order: 1 }).lean(),
-        LearningRecord.find({ date: { $gte: range.startKey, $lte: range.endKey } }).lean(),
-        WeeklyReview.findOne({ planSlug: plan.slug, week }).lean(),
-        Note.find({ createdAt: { $gte: range.start, $lte: new Date(range.end.getTime() + 86_399_999) } })
+        LearningTask.find({ profileId, week }).sort({ order: 1 }).lean(),
+        LearningRecord.find({ profileId, date: { $gte: range.startKey, $lte: range.endKey } }).lean(),
+        WeeklyReview.findOne({ profileId, planSlug: plan.slug, week }).lean(),
+        Note.find({
+          profileId,
+          createdAt: { $gte: range.start, $lte: new Date(range.end.getTime() + 86_399_999) },
+        })
           .select({ title: 1, kind: 1 })
           .lean(),
       ]);
@@ -204,7 +207,7 @@ export async function buildAIContext(input: AIContextInput) {
   }
 
   if (input.scope === 'general') {
-    const overview = await getOverview();
+    const overview = await getOverview(profileId);
     title = '学习总览';
     sections.push(
       [

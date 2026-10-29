@@ -14,15 +14,15 @@ export async function metaRoutes(app: FastifyInstance) {
 
   app.get('/search', async (request) => {
     const { q = '' } = request.query as { q?: string };
-    return globalSearch(q.slice(0, 120));
+    return globalSearch(request.profileId, q.slice(0, 120));
   });
 
-  app.get('/settings', async () => {
+  app.get('/settings', async (request) => {
     const [tasks, resources, notes, issues] = await Promise.all([
-      LearningTask.countDocuments(),
-      Resource.countDocuments(),
-      Note.countDocuments(),
-      ProjectLog.countDocuments({ status: 'open' }),
+      LearningTask.countDocuments({ profileId: request.profileId }),
+      Resource.countDocuments({ profileId: request.profileId }),
+      Note.countDocuments({ profileId: request.profileId }),
+      ProjectLog.countDocuments({ profileId: request.profileId, status: 'open' }),
     ]);
     return {
       storage: {

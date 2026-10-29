@@ -5,6 +5,7 @@ import { MAIN_PROJECT_SLUG } from '../src/lib/constants';
 import { LearningTask } from '../src/models';
 import { computeStreak, currentWeekOf, dayKey } from '../src/services/progress';
 import { updateStep } from '../src/services/taskService';
+import { TEST_PROFILE_ID } from './setup';
 
 let app: FastifyInstance;
 let base = '';
@@ -37,6 +38,7 @@ async function api(
     method,
     headers: {
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+      'x-profile-id': TEST_PROFILE_ID,
       ...(headers ?? {}),
     },
     body: payload === undefined ? undefined : JSON.stringify(payload),
@@ -102,7 +104,7 @@ describe('初始概览与种子数据', () => {
   });
 
   test('步骤带顺序与参考答案', async () => {
-    const task = await LearningTask.findOne({ slug: 'p4-t1-mcp-basics' }).lean();
+    const task = await LearningTask.findOne({ profileId: TEST_PROFILE_ID, slug: 'p4-t1-mcp-basics' }).lean();
     expect(task).not.toBeNull();
     const steps = [...(task?.steps ?? [])].sort((a, b) => a.order - b.order);
     expect(steps.map((step) => step.order)).toEqual([1, 2, 3]);
@@ -246,8 +248,9 @@ describe('任务状态机与步骤门禁', () => {
 
   test('退回已完成步骤会把任务降级为进行中', async () => {
     const tempSlug = 'test-step-reopen';
-    await LearningTask.findOneAndDelete({ slug: tempSlug });
+    await LearningTask.findOneAndDelete({ profileId: TEST_PROFILE_ID, slug: tempSlug });
     await LearningTask.create({
+      profileId: TEST_PROFILE_ID,
       slug: tempSlug,
       phaseSlug: 'phase-1',
       week: 1,
@@ -279,12 +282,12 @@ describe('任务状态机与步骤门禁', () => {
       statusHistory: [{ status: 'done', at: new Date(), note: '' }],
     });
 
-    const updated = await updateStep(tempSlug, 's1', { status: 'todo' });
+    const updated = await updateStep(TEST_PROFILE_ID, tempSlug, 's1', { status: 'todo' });
     expect(updated?.status).toBe('in_progress');
     expect(updated?.completedAt).toBeNull();
     expect(updated?.statusHistory.at(-1)?.note).toContain('退回步骤');
 
-    await LearningTask.findOneAndDelete({ slug: tempSlug });
+    await LearningTask.findOneAndDelete({ profileId: TEST_PROFILE_ID, slug: tempSlug });
   });
 });
 
@@ -389,7 +392,9 @@ describe('资料、笔记与项目', () => {
 
 describe('数据备份导出', () => {
   test('导出 JSON 包含学习数据且不含密钥字段', async () => {
-    const res = await fetch(`${base}/api/export`);
+    const res = await fetch(`${base}/api/export`, {
+      headers: { 'x-profile-id': TEST_PROFILE_ID },
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-disposition')).toContain('attachment');
     const data = await res.json();
@@ -424,5 +429,84 @@ describe('AI 配置由浏览器提供', () => {
       'x-ai-base-url': 'ftp://example.com',
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('匿名学习档案隔离', () => {
+  async function createProfile(): Promise<string> {
+    const res = await fetch(`${base}/api/profile`, { method: 'POST' });
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { profileId: string; contentVersion: number };
+    expect(data.profileId).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+    expect(data.contentVersion).toBeGreaterThan(0);
+    return data.profileId;
+  }
+
+  test('缺少档案头返回 401，未知档案返回 404', async () => {
+    const missing = await fetch(`${base}/api/overview`);
+    expect(missing.status).toBe(401);
+
+    const unknown = await fetch(`${base}/api/overview`, {
+      headers: { 'x-profile-id': 'unknown-profile-0001' },
+    });
+    expect(unknown.status).toBe(404);
+  });
+
+  test('新建档案自动获得完整课程且进度为零', async () => {
+    const profileId = await createProfile();
+    const headers = { 'x-profile-id': profileId };
+
+    const overview = await (await fetch(`${base}/api/overview`, { headers })).json();
+    expect(overview.stats.totalTasks).toBe(53);
+    expect(overview.stats.doneTasks).toBe(0);
+    expect(overview.time.totalMinutes).toBe(0);
+
+    const tasks = await (await fetch(`${base}/api/tasks`, { headers })).json();
+    expect(tasks).toHaveLength(55);
+
+    const plan = await (await fetch(`${base}/api/plan`, { headers })).json();
+    expect(plan.phases).toHaveLength(7);
+  });
+
+  test('笔记与项目记录不会跨档案泄漏', async () => {
+    const profileA = await createProfile();
+    const profileB = await createProfile();
+
+    const created = await fetch(`${base}/api/notes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-profile-id': profileA },
+      body: JSON.stringify({ title: 'A 档案私有笔记', kind: 'issue', content: '只属于 A' }),
+    });
+    expect(created.status).toBe(201);
+
+    const listA = await (await fetch(`${base}/api/notes`, { headers: { 'x-profile-id': profileA } })).json();
+    const listB = await (await fetch(`${base}/api/notes`, { headers: { 'x-profile-id': profileB } })).json();
+    expect(listA).toHaveLength(1);
+    expect(listB).toHaveLength(0);
+
+    const settingsA = await (await fetch(`${base}/api/settings`, { headers: { 'x-profile-id': profileA } })).json();
+    const settingsB = await (await fetch(`${base}/api/settings`, { headers: { 'x-profile-id': profileB } })).json();
+    expect(settingsA.storage.notes).toBe(1);
+    expect(settingsB.storage.notes).toBe(0);
+  });
+
+  test('使用档案码恢复同一档案', async () => {
+    const profileId = await createProfile();
+    const res = await fetch(`${base}/api/profile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: profileId }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { profileId: string }).profileId).toBe(profileId);
+  });
+
+  test('不存在的档案码返回 404 而不是新建档案', async () => {
+    const res = await fetch(`${base}/api/profile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: 'missing-profile-0001' }),
+    });
+    expect(res.status).toBe(404);
   });
 });

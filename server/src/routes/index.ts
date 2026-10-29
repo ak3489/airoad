@@ -5,6 +5,7 @@ import { metaRoutes } from './meta';
 import { noteRoutes } from './notes';
 import { overviewRoutes } from './overview';
 import { planRoutes } from './plan';
+import { profileRoutes } from './profile';
 import { projectRoutes } from './projects';
 import { resourceRoutes } from './resources';
 import { reviewRoutes } from './reviews';
@@ -12,6 +13,7 @@ import { taskRoutes } from './tasks';
 
 export async function apiRoutes(app: FastifyInstance) {
   await app.register(metaRoutes);
+  await app.register(profileRoutes);
   await app.register(overviewRoutes);
   await app.register(taskRoutes);
   await app.register(planRoutes);

@@ -31,14 +31,17 @@ function stepSummary(steps: { key: string; order: number; title: string; status:
   }));
 }
 
-export async function listTasks(query: {
-  status?: TaskStatus;
-  phase?: string;
-  week?: number;
-  q?: string;
-  tag?: string;
-}) {
-  const filter: Record<string, unknown> = {};
+export async function listTasks(
+  profileId: string,
+  query: {
+    status?: TaskStatus;
+    phase?: string;
+    week?: number;
+    q?: string;
+    tag?: string;
+  }
+) {
+  const filter: Record<string, unknown> = { profileId };
   if (query.status) filter.status = query.status;
   if (query.phase) filter.phaseSlug = query.phase;
   if (query.week) filter.week = query.week;
@@ -47,8 +50,8 @@ export async function listTasks(query: {
 
   const [tasks, phases, records] = await Promise.all([
     LearningTask.find(filter).sort({ week: 1, order: 1 }).lean(),
-    LearningPhase.find({}).select({ slug: 1, title: 1, order: 1 }).lean(),
-    LearningRecord.find({}).select({ taskSlug: 1, minutes: 1 }).lean(),
+    LearningPhase.find({ profileId }).select({ slug: 1, title: 1, order: 1 }).lean(),
+    LearningRecord.find({ profileId }).select({ taskSlug: 1, minutes: 1 }).lean(),
   ]);
 
   const phaseTitle = new Map(phases.map((phase) => [phase.slug, phase.title]));
@@ -85,17 +88,17 @@ export async function listTasks(query: {
   }));
 }
 
-export async function getTaskDetail(slug: string) {
-  const task = await LearningTask.findOne({ slug }).lean();
+export async function getTaskDetail(profileId: string, slug: string) {
+  const task = await LearningTask.findOne({ profileId, slug }).lean();
   if (!task) notFound('任务不存在');
 
   const [phase, resources, records, siblings, minutesAgg] = await Promise.all([
-    LearningPhase.findOne({ slug: task.phaseSlug }).lean(),
-    Resource.find({ slug: { $in: task.resourceSlugs } }).lean(),
-    LearningRecord.find({ taskSlug: slug }).sort({ createdAt: -1 }).limit(20).lean(),
-    LearningTask.find({ phaseSlug: task.phaseSlug }).sort({ order: 1 }).lean(),
+    LearningPhase.findOne({ profileId, slug: task.phaseSlug }).lean(),
+    Resource.find({ profileId, slug: { $in: task.resourceSlugs } }).lean(),
+    LearningRecord.find({ profileId, taskSlug: slug }).sort({ createdAt: -1 }).limit(20).lean(),
+    LearningTask.find({ profileId, phaseSlug: task.phaseSlug }).sort({ order: 1 }).lean(),
     LearningRecord.aggregate<{ total: number }>([
-      { $match: { taskSlug: slug } },
+      { $match: { profileId, taskSlug: slug } },
       { $group: { _id: null, total: { $sum: '$minutes' } } },
     ]),
   ]);
@@ -105,6 +108,7 @@ export async function getTaskDetail(slug: string) {
   const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null;
 
   const prerequisiteTasks = await LearningTask.find({
+    profileId,
     slug: { $in: task.prerequisiteSlugs },
   })
     .select({ slug: 1, title: 1, status: 1 })
@@ -138,8 +142,8 @@ export async function getTaskDetail(slug: string) {
   };
 }
 
-export async function transitionTask(slug: string, target: TaskStatus, note = '') {
-  const task = await LearningTask.findOne({ slug }).lean();
+export async function transitionTask(profileId: string, slug: string, target: TaskStatus, note = '') {
+  const task = await LearningTask.findOne({ profileId, slug }).lean();
   if (!task) notFound('任务不存在');
   const current = task.status as TaskStatus;
   if (current === target) return { task: { slug, status: current }, changed: false };
@@ -174,25 +178,30 @@ export async function transitionTask(slug: string, target: TaskStatus, note = ''
     (update.$set as Record<string, unknown>).startedAt = task.startedAt ?? now;
   }
 
-  const updated = await LearningTask.findOneAndUpdate({ slug }, update, { new: true }).lean();
+  const updated = await LearningTask.findOneAndUpdate({ profileId, slug }, update, { new: true }).lean();
   return { task: updated, changed: true };
 }
 
-export async function patchTask(slug: string, patch: Record<string, unknown>) {
+export async function patchTask(profileId: string, slug: string, patch: Record<string, unknown>) {
   if (patch.dueDate !== undefined) {
     patch.dueDate = patch.dueDate ? new Date(patch.dueDate as string) : null;
   }
-  const task = await LearningTask.findOneAndUpdate({ slug }, { $set: patch }, { new: true }).lean();
+  const task = await LearningTask.findOneAndUpdate(
+    { profileId, slug },
+    { $set: patch },
+    { new: true }
+  ).lean();
   if (!task) notFound('任务不存在');
   return task;
 }
 
 export async function updateStep(
+  profileId: string,
   slug: string,
   stepKey: string,
   patch: { status?: 'todo' | 'done'; resultLog?: string; errorLog?: string; notes?: string }
 ) {
-  const task = await LearningTask.findOne({ slug }).lean();
+  const task = await LearningTask.findOne({ profileId, slug }).lean();
   if (!task) notFound('任务不存在');
   const index = task.steps.findIndex((step) => step.key === stepKey);
   if (index === -1) notFound('步骤不存在');
@@ -248,25 +257,29 @@ export async function updateStep(
     };
   }
 
-  const updated = await LearningTask.findOneAndUpdate({ slug }, update, { new: true }).lean();
+  const updated = await LearningTask.findOneAndUpdate({ profileId, slug }, update, { new: true }).lean();
   return updated;
 }
 
-export async function addRecord(input: {
-  taskSlug?: string;
-  stepKey?: string;
-  date?: string;
-  minutes: number;
-  summary?: string;
-  kind?: string;
-}) {
+export async function addRecord(
+  profileId: string,
+  input: {
+    taskSlug?: string;
+    stepKey?: string;
+    date?: string;
+    minutes: number;
+    summary?: string;
+    kind?: string;
+  }
+) {
   let task = null;
   if (input.taskSlug) {
-    task = await LearningTask.findOne({ slug: input.taskSlug });
+    task = await LearningTask.findOne({ profileId, slug: input.taskSlug });
     if (!task) notFound('任务不存在');
   }
 
   const record = await LearningRecord.create({
+    profileId,
     taskSlug: input.taskSlug ?? '',
     stepKey: input.stepKey ?? '',
     date: input.date ?? dayKey(new Date()),
@@ -286,13 +299,14 @@ export async function addRecord(input: {
 }
 
 export async function splitTask(
+  profileId: string,
   slug: string,
   parts: { title: string; objective: string; estimatedMinutes: number }[]
 ) {
-  const original = await LearningTask.findOne({ slug }).lean();
+  const original = await LearningTask.findOne({ profileId, slug }).lean();
   if (!original) notFound('任务不存在');
 
-  const phaseTasks = await LearningTask.find({ phaseSlug: original.phaseSlug })
+  const phaseTasks = await LearningTask.find({ profileId, phaseSlug: original.phaseSlug })
     .sort({ order: -1 })
     .limit(1)
     .lean();
@@ -302,6 +316,7 @@ export async function splitTask(
   const created = [];
   for (const [index, part] of parts.entries()) {
     const task = await LearningTask.create({
+      profileId,
       slug: `custom-${stamp}-${index + 1}`,
       phaseSlug: original.phaseSlug,
       week: original.week,
@@ -327,24 +342,28 @@ export async function splitTask(
   return created;
 }
 
-export async function createTask(input: {
-  phaseSlug: string;
-  week: number;
-  title: string;
-  objective: string;
-  estimatedMinutes: number;
-  dueDate?: string | null;
-  tags?: string[];
-  acceptance?: string[];
-}) {
-  const phase = await LearningPhase.findOne({ slug: input.phaseSlug }).lean();
+export async function createTask(
+  profileId: string,
+  input: {
+    phaseSlug: string;
+    week: number;
+    title: string;
+    objective: string;
+    estimatedMinutes: number;
+    dueDate?: string | null;
+    tags?: string[];
+    acceptance?: string[];
+  }
+) {
+  const phase = await LearningPhase.findOne({ profileId, slug: input.phaseSlug }).lean();
   if (!phase) notFound('阶段不存在');
-  const last = await LearningTask.find({ phaseSlug: input.phaseSlug })
+  const last = await LearningTask.find({ profileId, phaseSlug: input.phaseSlug })
     .sort({ order: -1 })
     .limit(1)
     .lean();
 
   const task = await LearningTask.create({
+    profileId,
     slug: `custom-${Date.now()}`,
     phaseSlug: input.phaseSlug,
     week: input.week,
@@ -367,12 +386,12 @@ export async function createTask(input: {
   return task.toObject();
 }
 
-export async function deleteCustomTask(slug: string) {
+export async function deleteCustomTask(profileId: string, slug: string) {
   if (!slug.startsWith('custom-')) {
     throw new HttpError(403, '只能删除自定义任务');
   }
-  const task = await LearningTask.findOneAndDelete({ slug });
+  const task = await LearningTask.findOneAndDelete({ profileId, slug });
   if (!task) notFound('任务不存在');
-  await LearningRecord.deleteMany({ taskSlug: slug });
+  await LearningRecord.deleteMany({ profileId, taskSlug: slug });
   return { deleted: true };
 }

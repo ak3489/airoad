@@ -3,18 +3,21 @@ import { Evaluation, WeeklyReview } from '../models/review';
 import { HttpError, notFound } from '../lib/http';
 import { dayKey, weekRange } from './progress';
 
-export async function generateWeeklyReview(week: number) {
+export async function generateWeeklyReview(profileId: string, week: number) {
   if (week < 1 || week > 52) throw new HttpError(400, '周次必须在 1–52 之间');
-  const plan = await LearningPlan.findOne({ slug: 'main-plan' }).lean();
+  const plan = await LearningPlan.findOne({ profileId, slug: 'main-plan' }).lean();
   if (!plan) notFound('学习计划不存在');
   if (week > plan.totalWeeks + 4) throw new HttpError(400, '该周次超出计划范围');
 
   const range = weekRange(plan.startDate, week);
   const [allTasks, records, notes, existing] = await Promise.all([
-    LearningTask.find({ week }).sort({ order: 1 }).lean(),
-    LearningRecord.find({ date: { $gte: range.startKey, $lte: range.endKey } }).lean(),
-    Note.find({ createdAt: { $gte: range.start, $lte: new Date(range.end.getTime() + 86_399_999) } }).lean(),
-    WeeklyReview.findOne({ planSlug: plan.slug, week }).lean(),
+    LearningTask.find({ profileId, week }).sort({ order: 1 }).lean(),
+    LearningRecord.find({ profileId, date: { $gte: range.startKey, $lte: range.endKey } }).lean(),
+    Note.find({
+      profileId,
+      createdAt: { $gte: range.start, $lte: new Date(range.end.getTime() + 86_399_999) },
+    }).lean(),
+    WeeklyReview.findOne({ profileId, planSlug: plan.slug, week }).lean(),
   ]);
   const tasks = allTasks.filter((task) => !task.optional);
 
@@ -55,7 +58,7 @@ export async function generateWeeklyReview(week: number) {
   };
 
   const review = await WeeklyReview.findOneAndUpdate(
-    { planSlug: plan.slug, week },
+    { profileId, planSlug: plan.slug, week },
     {
       $set: payload,
       $setOnInsert: {
@@ -72,8 +75,8 @@ export async function generateWeeklyReview(week: number) {
   return { review, generated: true };
 }
 
-export async function listReviews() {
-  const reviews = await WeeklyReview.find({}).sort({ week: -1 }).lean();
+export async function listReviews(profileId: string) {
+  const reviews = await WeeklyReview.find({ profileId }).sort({ week: -1 }).lean();
   return reviews.map((review) => ({
     ...review,
     createdAt: review.createdAt?.toISOString() ?? null,
@@ -81,8 +84,8 @@ export async function listReviews() {
   }));
 }
 
-export async function getReview(week: number) {
-  const review = await WeeklyReview.findOne({ planSlug: 'main-plan', week }).lean();
+export async function getReview(profileId: string, week: number) {
+  const review = await WeeklyReview.findOne({ profileId, planSlug: 'main-plan', week }).lean();
   if (!review) notFound('该周复盘尚未生成');
   return {
     ...review,
@@ -91,9 +94,9 @@ export async function getReview(week: number) {
   };
 }
 
-export async function patchReview(week: number, patch: Record<string, unknown>) {
+export async function patchReview(profileId: string, week: number, patch: Record<string, unknown>) {
   if (patch.status === 'final') {
-    const review = await WeeklyReview.findOne({ planSlug: 'main-plan', week }).lean();
+    const review = await WeeklyReview.findOne({ profileId, planSlug: 'main-plan', week }).lean();
     if (!review) notFound('该周复盘尚未生成');
     const missing = ['newSkills', 'challenges', 'nextWeekPlan'].filter(
       (key) => !String((patch[key] ?? (review as unknown as Record<string, unknown>)[key] ?? '')).trim()
@@ -103,7 +106,7 @@ export async function patchReview(week: number, patch: Record<string, unknown>) 
     }
   }
   const review = await WeeklyReview.findOneAndUpdate(
-    { planSlug: 'main-plan', week },
+    { profileId, planSlug: 'main-plan', week },
     { $set: patch },
     { new: true }
   ).lean();
@@ -111,21 +114,24 @@ export async function patchReview(week: number, patch: Record<string, unknown>) 
   return review;
 }
 
-export async function createEvaluation(input: {
-  scope: 'phase' | 'project' | 'task' | 'week';
-  targetSlug: string;
-  title: string;
-  criteria: string;
-  evidence: string;
-  result: 'pass' | 'fail' | 'partial';
-  score: number;
-  notes: string;
-}) {
+export async function createEvaluation(
+  profileId: string,
+  input: {
+    scope: 'phase' | 'project' | 'task' | 'week';
+    targetSlug: string;
+    title: string;
+    criteria: string;
+    evidence: string;
+    result: 'pass' | 'fail' | 'partial';
+    score: number;
+    notes: string;
+  }
+) {
   if (input.result === 'pass') {
     if (input.scope === 'phase') {
-      const phase = await LearningPhase.findOne({ slug: input.targetSlug }).lean();
+      const phase = await LearningPhase.findOne({ profileId, slug: input.targetSlug }).lean();
       if (!phase) notFound('阶段不存在');
-      const phaseTasks = await LearningTask.find({ phaseSlug: input.targetSlug }).lean();
+      const phaseTasks = await LearningTask.find({ profileId, phaseSlug: input.targetSlug }).lean();
       const tasks = phaseTasks.filter((task) => !task.optional);
       const unfinished = tasks.filter((task) => task.status !== 'done');
       if (tasks.length === 0 || unfinished.length > 0) {
@@ -137,7 +143,7 @@ export async function createEvaluation(input: {
       }
     }
     if (input.scope === 'task') {
-      const task = await LearningTask.findOne({ slug: input.targetSlug }).lean();
+      const task = await LearningTask.findOne({ profileId, slug: input.targetSlug }).lean();
       if (!task) notFound('任务不存在');
       if (task.status !== 'done') throw new HttpError(409, '任务尚未完成，不能判定为通过');
     }
@@ -145,13 +151,14 @@ export async function createEvaluation(input: {
 
   const evaluation = await Evaluation.create({
     ...input,
+    profileId,
     evaluatedAt: new Date(),
   });
   return evaluation.toObject();
 }
 
-export async function listEvaluations(targetSlug?: string) {
-  const filter = targetSlug ? { targetSlug } : {};
+export async function listEvaluations(profileId: string, targetSlug?: string) {
+  const filter = targetSlug ? { profileId, targetSlug } : { profileId };
   const items = await Evaluation.find(filter).sort({ evaluatedAt: -1 }).lean();
   return items.map((item) => ({
     ...item,
@@ -160,11 +167,11 @@ export async function listEvaluations(targetSlug?: string) {
   }));
 }
 
-export async function phaseAcceptanceStatus() {
+export async function phaseAcceptanceStatus(profileId: string) {
   const [phases, tasks, evaluations] = await Promise.all([
-    LearningPhase.find({}).sort({ order: 1 }).lean(),
-    LearningTask.find({}).select({ phaseSlug: 1, status: 1, optional: 1 }).lean(),
-    Evaluation.find({ scope: 'phase' }).sort({ evaluatedAt: -1 }).lean(),
+    LearningPhase.find({ profileId }).sort({ order: 1 }).lean(),
+    LearningTask.find({ profileId }).select({ phaseSlug: 1, status: 1, optional: 1 }).lean(),
+    Evaluation.find({ profileId, scope: 'phase' }).sort({ evaluatedAt: -1 }).lean(),
   ]);
 
   const latest = new Map<string, (typeof evaluations)[number]>();

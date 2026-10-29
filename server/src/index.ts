@@ -1,20 +1,11 @@
 import { createApp } from './app';
 import { config } from './config';
 import { connectDatabase, disconnectDatabase } from './db/mongo';
-import { SEED_CONTENT_VERSION, seedDatabase } from './db/seed/run';
-import { LearningPlan } from './models';
+import { prepareProfiles } from './db/profiles';
 
 async function main() {
   await connectDatabase();
-
-  const plan = await LearningPlan.findOne({ slug: 'main-plan' }).select({ contentVersion: 1 }).lean();
-  if (!plan) {
-    const result = await seedDatabase();
-    console.log('[seed] initial content created', result);
-  } else if ((plan.contentVersion ?? 0) < SEED_CONTENT_VERSION) {
-    const result = await seedDatabase();
-    console.log('[seed] content updated', { ...result, version: SEED_CONTENT_VERSION });
-  }
+  await prepareProfiles();
 
   const app = await createApp();
   await app.listen({ port: config.port, host: config.host });

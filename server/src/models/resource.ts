@@ -14,6 +14,7 @@ export const RESOURCE_STATUSES = ['unread', 'reading', 'done', 'archived'] as co
 export const DIFFICULTIES = ['beginner', 'intermediate', 'advanced'] as const;
 
 export interface ResourceDoc {
+  profileId: string;
   slug: string;
   title: string;
   url: string;
@@ -36,7 +37,8 @@ export interface ResourceDoc {
 
 const resourceSchema = new Schema<ResourceDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     title: { type: String, required: true },
     url: { type: String, required: true },
     kind: { type: String, enum: RESOURCE_KINDS, required: true },
@@ -56,9 +58,11 @@ const resourceSchema = new Schema<ResourceDoc>(
   options
 );
 
+resourceSchema.index({ profileId: 1, slug: 1 }, { unique: true });
 resourceSchema.index({ title: 'text', topic: 'text', keyPoints: 'text', tags: 'text' });
 
 export interface LearningRecordDoc {
+  profileId: string;
   taskSlug: string;
   stepKey: string;
   date: string;
@@ -70,6 +74,7 @@ export interface LearningRecordDoc {
 
 const recordSchema = new Schema<LearningRecordDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     taskSlug: { type: String, default: '', index: true },
     stepKey: { type: String, default: '' },
     date: { type: String, required: true, index: true },
@@ -83,6 +88,9 @@ const recordSchema = new Schema<LearningRecordDoc>(
   },
   { timestamps: { createdAt: true, updatedAt: false }, versionKey: false }
 );
+
+recordSchema.index({ profileId: 1, date: 1 });
+recordSchema.index({ profileId: 1, taskSlug: 1, createdAt: -1 });
 
 export const Resource = (models.Resource as mongoose.Model<ResourceDoc> | undefined) ?? model<ResourceDoc>('Resource', resourceSchema);
 export const LearningRecord =

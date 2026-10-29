@@ -5,6 +5,7 @@ const options = { timestamps: true, versionKey: false } as const;
 export const PLAN_STATUSES = ['active', 'paused', 'completed'] as const;
 
 export interface LearningPlanDoc {
+  profileId: string;
   slug: string;
   name: string;
   roleTarget: string;
@@ -20,7 +21,8 @@ export interface LearningPlanDoc {
 
 const planSchema = new Schema<LearningPlanDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     name: { type: String, required: true },
     roleTarget: { type: String, required: true },
     summary: { type: String, default: '' },
@@ -34,6 +36,7 @@ const planSchema = new Schema<LearningPlanDoc>(
 );
 
 export interface LearningPhaseDoc {
+  profileId: string;
   slug: string;
   planSlug: string;
   order: number;
@@ -54,7 +57,8 @@ export interface LearningPhaseDoc {
 
 const phaseSchema = new Schema<LearningPhaseDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     planSlug: { type: String, required: true, index: true },
     order: { type: Number, required: true },
     title: { type: String, required: true },
@@ -72,7 +76,9 @@ const phaseSchema = new Schema<LearningPhaseDoc>(
   options
 );
 
-phaseSchema.index({ planSlug: 1, order: 1 });
+planSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+phaseSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+phaseSchema.index({ profileId: 1, planSlug: 1, order: 1 });
 
 export const LearningPlan =
   (models.LearningPlan as mongoose.Model<LearningPlanDoc> | undefined) ?? model<LearningPlanDoc>('LearningPlan', planSchema);

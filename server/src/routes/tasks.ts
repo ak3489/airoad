@@ -26,60 +26,63 @@ import { LearningRecord } from '../models/resource';
 export async function taskRoutes(app: FastifyInstance) {
   app.get('/tasks', async (request) => {
     const query = parse(taskListQuerySchema, request.query);
-    return listTasks(query);
+    return listTasks(request.profileId, query);
   });
 
   app.post('/tasks', async (request, reply) => {
     const body = parse(createTaskSchema, request.body);
-    const task = await createTask(body);
+    const task = await createTask(request.profileId, body);
     return reply.status(201).send(task);
   });
 
   app.get('/tasks/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
-    return getTaskDetail(slug);
+    return getTaskDetail(request.profileId, slug);
   });
 
   app.patch('/tasks/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
     const patch = parse(taskPatchSchema, request.body);
-    return patchTask(slug, patch);
+    return patchTask(request.profileId, slug, patch);
   });
 
   app.post('/tasks/:slug/status', async (request) => {
     const { slug } = request.params as { slug: string };
     const body = parse(transitionSchema, request.body);
-    return transitionTask(slug, body.status, body.note);
+    return transitionTask(request.profileId, slug, body.status, body.note);
   });
 
   app.patch('/tasks/:slug/steps/:stepKey', async (request) => {
     const { slug, stepKey } = request.params as { slug: string; stepKey: string };
     const patch = parse(stepPatchSchema, request.body);
-    const task = await updateStep(slug, stepKey, patch);
+    const task = await updateStep(request.profileId, slug, stepKey, patch);
     return { task };
   });
 
   app.post('/tasks/:slug/records', async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const body = parse(recordSchema, request.body);
-    const record = await addRecord({ ...body, taskSlug: slug });
+    const record = await addRecord(request.profileId, { ...body, taskSlug: slug });
     return reply.status(201).send({ record });
   });
 
   app.post('/tasks/:slug/split', async (request, reply) => {
     const { slug } = request.params as { slug: string };
     const body = parse(splitSchema, request.body);
-    const tasks = await splitTask(slug, body.parts);
+    const tasks = await splitTask(request.profileId, slug, body.parts);
     return reply.status(201).send({ tasks });
   });
 
   app.delete('/tasks/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
-    return deleteCustomTask(slug);
+    return deleteCustomTask(request.profileId, slug);
   });
 
-  app.get('/records', async () => {
-    const records = await LearningRecord.find({}).sort({ createdAt: -1 }).limit(50).lean();
+  app.get('/records', async (request) => {
+    const records = await LearningRecord.find({ profileId: request.profileId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
     return records.map((record) => ({
       ...record,
       createdAt: record.createdAt?.toISOString() ?? null,
@@ -88,7 +91,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.post('/records', async (request, reply) => {
     const body = parse(recordSchema, request.body);
-    const record = await addRecord(body);
+    const record = await addRecord(request.profileId, body);
     return reply.status(201).send({ record });
   });
 

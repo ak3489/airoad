@@ -11,21 +11,22 @@ import { Milestone, Project, ProjectLog, ProjectTask } from '../models/project';
 import { Evaluation, WeeklyReview } from '../models/review';
 
 export async function exportRoutes(app: FastifyInstance) {
-  app.get('/export', async (_request, reply) => {
+  app.get('/export', async (request, reply) => {
+    const profileId = request.profileId;
     const [plan, phases, tasks, resources, notes, records, reviews, evaluations, projects, milestones, projectTasks, projectLogs] =
       await Promise.all([
-        LearningPlan.find({}).lean(),
-        LearningPhase.find({}).sort({ order: 1 }).lean(),
-        LearningTask.find({}).sort({ week: 1, order: 1 }).lean(),
-        Resource.find({}).sort({ importance: -1 }).lean(),
-        Note.find({}).sort({ updatedAt: -1 }).lean(),
-        LearningRecord.find({}).sort({ createdAt: 1 }).lean(),
-        WeeklyReview.find({}).sort({ week: 1 }).lean(),
-        Evaluation.find({}).sort({ evaluatedAt: 1 }).lean(),
-        Project.find({}).lean(),
-        Milestone.find({}).sort({ order: 1 }).lean(),
-        ProjectTask.find({}).sort({ order: 1 }).lean(),
-        ProjectLog.find({}).sort({ createdAt: 1 }).lean(),
+        LearningPlan.find({ profileId }).lean(),
+        LearningPhase.find({ profileId }).sort({ order: 1 }).lean(),
+        LearningTask.find({ profileId }).sort({ week: 1, order: 1 }).lean(),
+        Resource.find({ profileId }).sort({ importance: -1 }).lean(),
+        Note.find({ profileId }).sort({ updatedAt: -1 }).lean(),
+        LearningRecord.find({ profileId }).sort({ createdAt: 1 }).lean(),
+        WeeklyReview.find({ profileId }).sort({ week: 1 }).lean(),
+        Evaluation.find({ profileId }).sort({ evaluatedAt: 1 }).lean(),
+        Project.find({ profileId }).lean(),
+        Milestone.find({ profileId }).sort({ order: 1 }).lean(),
+        ProjectTask.find({ profileId }).sort({ order: 1 }).lean(),
+        ProjectLog.find({ profileId }).sort({ createdAt: 1 }).lean(),
       ]);
 
     const exportedAt = new Date();

@@ -16,28 +16,28 @@ import {
 export async function resourceRoutes(app: FastifyInstance) {
   app.get('/resources', async (request) => {
     const query = parse(resourceQuerySchema, request.query);
-    return listResources(query);
+    return listResources(request.profileId, query);
   });
 
   app.get('/resources/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
-    return getResource(slug);
+    return getResource(request.profileId, slug);
   });
 
   app.post('/resources', async (request, reply) => {
     const body = parse(resourceCreateSchema, request.body);
-    const resource = await createResource(body);
+    const resource = await createResource(request.profileId, body);
     return reply.status(201).send(resource);
   });
 
   app.patch('/resources/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
     const patch = parse(resourcePatchSchema, request.body);
-    return patchResource(slug, patch);
+    return patchResource(request.profileId, slug, patch);
   });
 
   app.delete('/resources/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
-    return deleteResource(slug);
+    return deleteResource(request.profileId, slug);
   });
 }

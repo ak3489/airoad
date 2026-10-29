@@ -53,6 +53,7 @@ export interface StatusEvent {
 }
 
 export interface LearningTaskDoc {
+  profileId: string;
   slug: string;
   phaseSlug: string;
   week: number;
@@ -150,7 +151,8 @@ const statusEventSchema = new Schema<StatusEvent>(
 
 const taskSchema = new Schema<LearningTaskDoc>(
   {
-    slug: { type: String, required: true, unique: true },
+    profileId: { type: String, required: true, index: true },
+    slug: { type: String, required: true },
     phaseSlug: { type: String, required: true, index: true },
     week: { type: Number, required: true, index: true },
     day: { type: Number, default: 1 },
@@ -178,7 +180,8 @@ const taskSchema = new Schema<LearningTaskDoc>(
   options
 );
 
-taskSchema.index({ phaseSlug: 1, week: 1, order: 1 });
+taskSchema.index({ profileId: 1, slug: 1 }, { unique: true });
+taskSchema.index({ profileId: 1, phaseSlug: 1, week: 1, order: 1 });
 taskSchema.index({ title: 'text', objective: 'text', tags: 'text' });
 
 export const LearningTask =

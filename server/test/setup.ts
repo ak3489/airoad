@@ -5,13 +5,15 @@ process.env.MONGODB_DB = 'airoad_test';
 process.env.NODE_ENV = 'test';
 
 const { connectDatabase, disconnectDatabase } = await import('../src/db/mongo');
-const { seedDatabase } = await import('../src/db/seed/run');
+const { seedProfile } = await import('../src/db/seed/run');
+
+export const TEST_PROFILE_ID = 'test-profile-0001';
 
 beforeAll(async () => {
   const mongoose = (await import('mongoose')).default;
   await connectDatabase();
   await mongoose.connection.dropDatabase();
-  await seedDatabase();
+  await seedProfile(TEST_PROFILE_ID);
 });
 
 afterAll(async () => {

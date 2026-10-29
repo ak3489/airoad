@@ -1,5 +1,5 @@
 import { connectDatabase, disconnectDatabase } from '../mongo';
-import { LearningPhase, LearningPlan, LearningTask, Resource } from '../../models';
+import { LearningPhase, LearningPlan, LearningTask, Profile, Resource } from '../../models';
 import { Milestone, Project, ProjectTask } from '../../models/project';
 import { phases } from './phases';
 import { resources } from './resources';
@@ -63,15 +63,16 @@ function mergeSteps(
   });
 }
 
-export async function seedDatabase() {
+export async function seedDatabase(profileId: string) {
   const now = new Date();
-  const existingPlan = await LearningPlan.findOne({ slug: planSlug });
+  const existingPlan = await LearningPlan.findOne({ profileId, slug: planSlug });
   const startDate = existingPlan?.startDate ?? startOfDay(now);
 
   await LearningPlan.findOneAndUpdate(
-    { slug: planSlug },
+    { profileId, slug: planSlug },
     {
       $set: {
+        profileId,
         name: 'AI Agent 工程师 12 周成长计划',
         roleTarget: 'AI Agent 工程师 / 大模型应用开发工程师',
         summary: '以真实项目为主线，从模型 API 到可部署的企业知识库 AI 客服。每天 1–2 小时，12 周完成第一阶段。',
@@ -86,17 +87,18 @@ export async function seedDatabase() {
 
   for (const phase of phases) {
     await LearningPhase.findOneAndUpdate(
-      { slug: phase.slug },
-      { $set: { ...phase, planSlug } },
+      { profileId, slug: phase.slug },
+      { $set: { ...phase, profileId, planSlug } },
       { upsert: true, setDefaultsOnInsert: true }
     );
   }
 
   for (const resource of resources) {
     await Resource.findOneAndUpdate(
-      { slug: resource.slug },
+      { profileId, slug: resource.slug },
       {
         $set: {
+          profileId,
           title: resource.title,
           url: resource.url,
           kind: resource.kind,
@@ -117,11 +119,12 @@ export async function seedDatabase() {
   }
 
   for (const task of allTasks) {
-    const existing = await LearningTask.findOne({ slug: task.slug }).lean();
+    const existing = await LearningTask.findOne({ profileId, slug: task.slug }).lean();
     await LearningTask.findOneAndUpdate(
-      { slug: task.slug },
+      { profileId, slug: task.slug },
       {
         $set: {
+          profileId,
           phaseSlug: task.phaseSlug,
           week: task.week,
           day: task.day,
@@ -155,9 +158,10 @@ export async function seedDatabase() {
   }
 
   await Project.findOneAndUpdate(
-    { slug: projectSeed.slug },
+    { profileId, slug: projectSeed.slug },
     {
       $set: {
+        profileId,
         name: projectSeed.name,
         goal: projectSeed.goal,
         repoUrl: projectSeed.repoUrl,
@@ -175,9 +179,10 @@ export async function seedDatabase() {
 
   for (const milestone of projectSeed.milestones) {
     await Milestone.findOneAndUpdate(
-      { slug: milestone.slug },
+      { profileId, slug: milestone.slug },
       {
         $set: {
+          profileId,
           projectSlug: projectSeed.slug,
           order: milestone.order,
           title: milestone.title,
@@ -192,9 +197,10 @@ export async function seedDatabase() {
 
   for (const task of projectSeed.tasks) {
     await ProjectTask.findOneAndUpdate(
-      { slug: task.slug },
+      { profileId, slug: task.slug },
       {
         $set: {
+          profileId,
           projectSlug: projectSeed.slug,
           milestoneSlug: task.milestoneSlug,
           order: task.order,
@@ -211,6 +217,7 @@ export async function seedDatabase() {
   }
 
   return {
+    profileId,
     plan: planSlug,
     phases: phases.length,
     tasks: allTasks.length,
@@ -222,11 +229,26 @@ export async function seedDatabase() {
   };
 }
 
+export async function seedProfile(profileId: string) {
+  const result = await seedDatabase(profileId);
+  await Profile.updateOne(
+    { _id: profileId },
+    {
+      $set: { contentVersion: SEED_CONTENT_VERSION, lastSeenAt: new Date() },
+      $setOnInsert: { legacy: false, claimed: true, claimedBy: '' },
+    },
+    { upsert: true }
+  );
+  return result;
+}
+
 if (require.main === module) {
+  const profileId = process.env.PROFILE_ID?.trim() || 'preview-profile-0001';
   connectDatabase()
     .then(async () => {
-      const result = await seedDatabase();
+      const result = await seedProfile(profileId);
       console.log('[seed] completed', result);
+      console.log(`[seed] profile code: ${profileId}`);
     })
     .catch((error) => {
       console.error('[seed] failed', error);

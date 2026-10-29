@@ -46,10 +46,14 @@ export async function aiRoutes(app: FastifyInstance) {
       if (!mongoose.isValidObjectId(body.conversationId)) {
         throw new HttpError(400, 'conversationId 无效');
       }
-      conversation = await AIConversation.findById(body.conversationId);
+      conversation = await AIConversation.findOne({
+        _id: body.conversationId,
+        profileId: request.profileId,
+      });
       if (!conversation) notFound('对话不存在');
     } else {
       conversation = await AIConversation.create({
+        profileId: request.profileId,
         title: body.message.replace(/\s+/g, ' ').slice(0, 30) || '新的对话',
         scope: body.scope,
         taskSlug: body.taskSlug ?? '',
@@ -59,7 +63,7 @@ export async function aiRoutes(app: FastifyInstance) {
       });
     }
 
-    const context = await buildAIContext({
+    const context = await buildAIContext(request.profileId, {
       scope: body.scope,
       taskSlug: body.taskSlug,
       phaseSlug: body.phaseSlug,
@@ -116,8 +120,8 @@ export async function aiRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/ai/conversations', async () => {
-    const conversations = await AIConversation.find({})
+  app.get('/ai/conversations', async (request) => {
+    const conversations = await AIConversation.find({ profileId: request.profileId })
       .select({ title: 1, scope: 1, taskSlug: 1, projectSlug: 1, updatedAt: 1, messages: 1 })
       .sort({ updatedAt: -1 })
       .limit(50)
@@ -136,7 +140,7 @@ export async function aiRoutes(app: FastifyInstance) {
   app.get('/ai/conversations/:id', async (request) => {
     const { id } = request.params as { id: string };
     if (!mongoose.isValidObjectId(id)) throw new HttpError(400, '对话 ID 无效');
-    const conversation = await AIConversation.findById(id).lean();
+    const conversation = await AIConversation.findOne({ _id: id, profileId: request.profileId }).lean();
     if (!conversation) notFound('对话不存在');
     return {
       ...conversation,
@@ -152,7 +156,7 @@ export async function aiRoutes(app: FastifyInstance) {
   app.delete('/ai/conversations/:id', async (request) => {
     const { id } = request.params as { id: string };
     if (!mongoose.isValidObjectId(id)) throw new HttpError(400, '对话 ID 无效');
-    await AIConversation.findByIdAndDelete(id);
+    await AIConversation.findOneAndDelete({ _id: id, profileId: request.profileId });
     return { deleted: true };
   });
 }

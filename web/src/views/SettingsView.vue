@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import {
+  Copy,
   Cpu,
   Database,
   Download,
   Eraser,
   Eye,
   EyeOff,
+  Fingerprint,
   KeyRound,
   Lock,
   PlugZap,
   Save,
   ShieldCheck,
   Terminal,
+  UserRoundPlus,
 } from 'lucide-vue-next';
 import { onMounted, reactive, ref } from 'vue';
 import StateBlock from '@/components/StateBlock.vue';
@@ -26,6 +29,7 @@ import {
 } from '@/lib/aiConfig';
 import { useAppState } from '@/lib/appState';
 import { formatDate } from '@/lib/format';
+import { createNewProfile, profileCode, profileError, switchProfile } from '@/lib/profile';
 import { notify } from '@/lib/toast';
 import type { PlanResponse } from '@/types';
 
@@ -46,6 +50,9 @@ const testError = ref('');
 
 const savingPlan = ref(false);
 const exporting = ref(false);
+const switchingProfile = ref(false);
+const creatingProfile = ref(false);
+const targetProfileCode = ref('');
 const planForm = reactive({
   name: '',
   roleTarget: '',
@@ -119,6 +126,47 @@ function clearAi() {
   testResult.value = null;
   testError.value = '';
   notify('success', '已清除浏览器中的 AI 配置');
+}
+
+async function copyProfileCode() {
+  if (!profileCode.value) return notify('error', '档案码尚未生成');
+  try {
+    await navigator.clipboard.writeText(profileCode.value);
+    notify('success', '档案码已复制，请保存到安全位置');
+  } catch {
+    notify('error', '复制失败，请手动选中档案码复制');
+  }
+}
+
+async function applyProfileCode() {
+  if (switchingProfile.value) return;
+  const code = targetProfileCode.value.trim();
+  if (!code) return notify('error', '请填写要切换的档案码');
+  if (code === profileCode.value) return notify('error', '当前已是该档案');
+  switchingProfile.value = true;
+  try {
+    await switchProfile(code);
+  } catch (err) {
+    notify('error', err instanceof Error ? err.message : '切换档案失败');
+  } finally {
+    switchingProfile.value = false;
+  }
+}
+
+async function startNewProfile() {
+  if (creatingProfile.value) return;
+  const confirmed = window.confirm(
+    '新建档案会得到一份全新的学习进度，当前档案不会被删除。请先复制并保存当前档案码，继续？'
+  );
+  if (!confirmed) return;
+  creatingProfile.value = true;
+  try {
+    await createNewProfile();
+  } catch (err) {
+    notify('error', err instanceof Error ? err.message : '新建档案失败');
+  } finally {
+    creatingProfile.value = false;
+  }
 }
 
 async function exportData() {
@@ -198,7 +246,66 @@ onMounted(load);
       <template #action><button class="btn btn-sm mt-8" type="button" @click="load">重试</button></template>
     </StateBlock>
 
-    <div v-else class="settings-grid">
+    <section class="settings-card profile-card">
+      <div class="settings-head">
+        <Fingerprint :size="15" />
+        <h2>学习档案</h2>
+        <span class="badge" :class="profileCode && !profileError ? 'badge-done' : 'badge-review'">
+          {{ profileError ? '档案无效' : profileCode ? '已建立' : '未建立' }}
+        </span>
+      </div>
+
+      <div class="form-row">
+        <div class="field">
+          <label class="field-label">当前档案码</label>
+          <div class="key-row">
+            <input
+              class="input mono"
+              :value="profileCode || '未生成'"
+              readonly
+              spellcheck="false"
+            />
+            <button class="icon-btn small" type="button" aria-label="复制档案码" @click="copyProfileCode">
+              <Copy :size="14" />
+            </button>
+          </div>
+          <p class="field-hint">换设备或换浏览器时输入这个档案码，即可恢复同一份学习进度。</p>
+        </div>
+        <div class="field">
+          <label class="field-label">切换到已有档案</label>
+          <div class="key-row">
+            <input
+              v-model="targetProfileCode"
+              class="input mono"
+              placeholder="xxxx-xxxx-xxxx-xxxx"
+              spellcheck="false"
+              autocomplete="off"
+              @keyup.enter="applyProfileCode"
+            />
+            <button class="btn btn-sm" type="button" :disabled="switchingProfile" @click="applyProfileCode">
+              <span v-if="switchingProfile" class="spinner" />
+              切换
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="profileError" class="test-fail">{{ profileError }}</p>
+
+      <div class="settings-actions">
+        <button class="btn btn-sm btn-ghost" type="button" :disabled="creatingProfile" @click="startNewProfile">
+          <UserRoundPlus :size="13" />
+          新建空白档案
+        </button>
+        <span class="text-xs faint">档案保存在服务器，浏览器只记录当前使用的档案码。</span>
+      </div>
+
+      <p class="settings-warn">
+        档案码不是账号密码：任何拿到它的人都能访问该档案；服务端没有找回机制，清除浏览器数据前请先复制保存。
+      </p>
+    </section>
+
+    <div v-if="!loading && !error" class="settings-grid">
       <section class="settings-card">
         <div class="settings-head">
           <Cpu :size="15" />
@@ -401,6 +508,10 @@ onMounted(load);
   border: 1px solid var(--line);
   border-radius: 13px;
   background: var(--surface);
+}
+
+.profile-card {
+  margin-bottom: 14px;
 }
 
 .settings-head {

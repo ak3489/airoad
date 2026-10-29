@@ -9,6 +9,7 @@ export interface AIMessage {
 }
 
 export interface AIConversationDoc {
+  profileId: string;
   title: string;
   scope: 'general' | 'task' | 'phase' | 'project' | 'review';
   taskSlug: string;
@@ -30,6 +31,7 @@ const messageSchema = new Schema<AIMessage>(
 
 const conversationSchema = new Schema<AIConversationDoc>(
   {
+    profileId: { type: String, required: true, index: true },
     title: { type: String, default: '新的对话' },
     scope: { type: String, enum: ['general', 'task', 'phase', 'project', 'review'], default: 'general' },
     taskSlug: { type: String, default: '' },
@@ -40,7 +42,7 @@ const conversationSchema = new Schema<AIConversationDoc>(
   options
 );
 
-conversationSchema.index({ updatedAt: -1 });
+conversationSchema.index({ profileId: 1, updatedAt: -1 });
 
 export const AIConversation =
   (models.AIConversation as mongoose.Model<AIConversationDoc> | undefined) ?? model<AIConversationDoc>('AIConversation', conversationSchema);

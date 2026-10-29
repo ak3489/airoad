@@ -321,6 +321,25 @@ select {
   color: var(--accent);
 }
 
+.sidebar-profile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-profile:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .dot {
   width: 6px;
   height: 6px;

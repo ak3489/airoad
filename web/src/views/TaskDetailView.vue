@@ -41,6 +41,7 @@ import StatusBadge from '@/components/StatusBadge.vue';
 import { api } from '@/lib/api';
 import { aiOpen, useAppState } from '@/lib/appState';
 import { STATUS_LABEL, formatClock, formatDate, formatDateTime, formatMinutes, isOverdue, relativeDay } from '@/lib/format';
+import { profileCode } from '@/lib/profile';
 import { notify, notifyError } from '@/lib/toast';
 import type { TaskDetail, TaskStatus, TaskStep, TaskSummary } from '@/types';
 
@@ -62,12 +63,14 @@ const timerStartedAt = ref<number | null>(null);
 const timerAccumulated = ref(0);
 let timerHandle: ReturnType<typeof setInterval> | null = null;
 
-const TIMER_STORAGE_KEY = 'airoad.timer.v1';
+function timerStorageKey() {
+  return `airoad.timer.v2.${profileCode.value || 'default'}`;
+}
 type StoredTimer = { startedAt: number | null; accumulated: number };
 
 function readTimerStore(): Record<string, StoredTimer> {
   try {
-    const raw = localStorage.getItem(TIMER_STORAGE_KEY);
+    const raw = localStorage.getItem(timerStorageKey());
     const parsed = raw ? (JSON.parse(raw) as Record<string, StoredTimer>) : {};
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
@@ -82,7 +85,7 @@ function persistTimer() {
   if (!timerRunning.value && timerAccumulated.value === 0) delete store[slug];
   else store[slug] = { startedAt: timerStartedAt.value, accumulated: timerAccumulated.value };
   try {
-    localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(store));
+    localStorage.setItem(timerStorageKey(), JSON.stringify(store));
   } catch {
     // 浏览器存储不可用时计时仍在内存中工作
   }

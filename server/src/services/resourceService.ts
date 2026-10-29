@@ -3,15 +3,18 @@ import { notFound } from '../lib/http';
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export async function listResources(query: {
-  q?: string;
-  phase?: string;
-  status?: string;
-  kind?: string;
-  favorite?: string;
-  task?: string;
-}) {
-  const filter: Record<string, unknown> = {};
+export async function listResources(
+  profileId: string,
+  query: {
+    q?: string;
+    phase?: string;
+    status?: string;
+    kind?: string;
+    favorite?: string;
+    task?: string;
+  }
+) {
+  const filter: Record<string, unknown> = { profileId };
   if (query.phase) filter.phaseSlug = query.phase;
   if (query.status) filter.status = query.status;
   if (query.kind) filter.kind = query.kind;
@@ -20,10 +23,17 @@ export async function listResources(query: {
     const regex = new RegExp(escapeRegex(query.q), 'i');
     filter.$or = [{ title: regex }, { topic: regex }, { tags: regex }, { keyPoints: regex }];
   }
-  if (query.task) filter.slug = { $in: (await LearningTask.findOne({ slug: query.task }).lean())?.resourceSlugs ?? [] };
+  if (query.task) {
+    filter.slug = {
+      $in: (await LearningTask.findOne({ profileId, slug: query.task }).lean())?.resourceSlugs ?? [],
+    };
+  }
 
   const resources = await Resource.find(filter).sort({ importance: -1, order: 1, title: 1 }).lean();
-  const taskLinks = await LearningTask.find({ resourceSlugs: { $in: resources.map((item) => item.slug) } })
+  const taskLinks = await LearningTask.find({
+    profileId,
+    resourceSlugs: { $in: resources.map((item) => item.slug) },
+  })
     .select({ slug: 1, title: 1, status: 1, resourceSlugs: 1 })
     .lean();
 
@@ -36,10 +46,10 @@ export async function listResources(query: {
   }));
 }
 
-export async function getResource(slug: string) {
-  const resource = await Resource.findOne({ slug }).lean();
+export async function getResource(profileId: string, slug: string) {
+  const resource = await Resource.findOne({ profileId, slug }).lean();
   if (!resource) notFound('资料不存在');
-  const tasks = await LearningTask.find({ resourceSlugs: slug })
+  const tasks = await LearningTask.find({ profileId, resourceSlugs: slug })
     .select({ slug: 1, title: 1, status: 1, phaseSlug: 1 })
     .lean();
   return {
@@ -51,9 +61,10 @@ export async function getResource(slug: string) {
   };
 }
 
-export async function createResource(input: Record<string, unknown>) {
+export async function createResource(profileId: string, input: Record<string, unknown>) {
   const resource = await Resource.create({
     ...input,
+    profileId,
     slug: `custom-${Date.now()}`,
     order: 99,
     status: 'unread',
@@ -64,15 +75,26 @@ export async function createResource(input: Record<string, unknown>) {
   return resource.toObject();
 }
 
-export async function patchResource(slug: string, patch: Record<string, unknown>) {
-  const resource = await Resource.findOneAndUpdate({ slug }, { $set: patch }, { new: true }).lean();
+export async function patchResource(
+  profileId: string,
+  slug: string,
+  patch: Record<string, unknown>
+) {
+  const resource = await Resource.findOneAndUpdate(
+    { profileId, slug },
+    { $set: patch },
+    { new: true }
+  ).lean();
   if (!resource) notFound('资料不存在');
   return resource;
 }
 
-export async function deleteResource(slug: string) {
-  const resource = await Resource.findOneAndDelete({ slug });
+export async function deleteResource(profileId: string, slug: string) {
+  const resource = await Resource.findOneAndDelete({ profileId, slug });
   if (!resource) notFound('资料不存在');
-  await LearningTask.updateMany({ resourceSlugs: slug }, { $pull: { resourceSlugs: slug } });
+  await LearningTask.updateMany(
+    { profileId, resourceSlugs: slug },
+    { $pull: { resourceSlugs: slug } }
+  );
   return { deleted: true };
 }

@@ -7,13 +7,14 @@ import { getOverview } from '../services/progress';
 import { phaseAcceptanceStatus } from '../services/reviewService';
 
 export async function planRoutes(app: FastifyInstance) {
-  app.get('/plan', async () => {
+  app.get('/plan', async (request) => {
+    const profileId = request.profileId;
     const [plan, phases, tasks, overview, acceptance] = await Promise.all([
-      LearningPlan.findOne({ slug: 'main-plan' }).lean(),
-      LearningPhase.find({ planSlug: 'main-plan' }).sort({ order: 1 }).lean(),
-      listTasks({}),
-      getOverview(),
-      phaseAcceptanceStatus(),
+      LearningPlan.findOne({ profileId, slug: 'main-plan' }).lean(),
+      LearningPhase.find({ profileId, planSlug: 'main-plan' }).sort({ order: 1 }).lean(),
+      listTasks(profileId, {}),
+      getOverview(profileId),
+      phaseAcceptanceStatus(profileId),
     ]);
     if (!plan) throw new Error('学习计划尚未初始化');
 
@@ -43,7 +44,7 @@ export async function planRoutes(app: FastifyInstance) {
     const patch: Record<string, unknown> = { ...body };
     if (body.startDate) patch.startDate = new Date(body.startDate);
     const plan = await LearningPlan.findOneAndUpdate(
-      { slug: 'main-plan' },
+      { profileId: request.profileId, slug: 'main-plan' },
       { $set: patch },
       { new: true }
     ).lean();
@@ -55,7 +56,7 @@ export async function planRoutes(app: FastifyInstance) {
     const { slug } = request.params as { slug: string };
     const patch = parse(phasePatchSchema, request.body);
     const phase = await LearningPhase.findOneAndUpdate(
-      { slug },
+      { profileId: request.profileId, slug },
       { $set: patch },
       { new: true }
     ).lean();
@@ -67,6 +68,7 @@ export async function planRoutes(app: FastifyInstance) {
     const body = parse(phaseCreateSchema, request.body);
     const phase = await LearningPhase.create({
       ...body,
+      profileId: request.profileId,
       slug: `custom-phase-${Date.now()}`,
       planSlug: 'main-plan',
       knowledge: [],

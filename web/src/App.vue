@@ -20,8 +20,9 @@ import { useRoute } from 'vue-router';
 import AiPanel from '@/components/AiPanel.vue';
 import SearchPalette from '@/components/SearchPalette.vue';
 import ToastHost from '@/components/ToastHost.vue';
-import { api } from '@/lib/api';
+import { API_BASE } from '@/lib/apiBase';
 import { aiOpen, loadOverview, loadSettings, searchOpen, sidebarOpen, useAppState } from '@/lib/appState';
+import { profileCode, shortProfileCode } from '@/lib/profile';
 
 const route = useRoute();
 const { overview, settings } = useAppState();
@@ -77,8 +78,8 @@ function onKey(event: KeyboardEvent) {
 
 async function checkHealth() {
   try {
-    await api.get<{ ok: boolean }>('/health');
-    apiOnline.value = true;
+    const response = await fetch(`${API_BASE}/health`);
+    apiOnline.value = response.ok;
   } catch {
     apiOnline.value = false;
   }
@@ -143,6 +144,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
           <span>{{ apiOnline === false ? 'API 离线' : apiOnline ? 'API 在线' : '检测中…' }}</span>
           <span style="margin-left: auto">v{{ settings?.app.version || '0.1.0' }}</span>
         </div>
+        <RouterLink
+          to="/settings"
+          class="sidebar-profile mono"
+          :title="profileCode || '尚未建立学习档案'"
+          @click="sidebarOpen = false"
+        >
+          <span class="faint">档案</span>
+          <span>{{ shortProfileCode(profileCode) }}</span>
+        </RouterLink>
         <a
           class="sidebar-git"
           href="https://github.com/ak3489/airoad"

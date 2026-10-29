@@ -18,34 +18,34 @@ const weekParam = (value: string) => {
 };
 
 export async function reviewRoutes(app: FastifyInstance) {
-  app.get('/reviews', async () => listReviews());
+  app.get('/reviews', async (request) => listReviews(request.profileId));
 
   app.get('/reviews/:week', async (request) => {
     const { week } = request.params as { week: string };
-    return getReview(weekParam(week));
+    return getReview(request.profileId, weekParam(week));
   });
 
   app.post('/reviews/:week/generate', async (request) => {
     const { week } = request.params as { week: string };
-    return generateWeeklyReview(weekParam(week));
+    return generateWeeklyReview(request.profileId, weekParam(week));
   });
 
   app.patch('/reviews/:week', async (request) => {
     const { week } = request.params as { week: string };
     const patch = parse(reviewPatchSchema, request.body);
-    return patchReview(weekParam(week), patch);
+    return patchReview(request.profileId, weekParam(week), patch);
   });
 
-  app.get('/phase-acceptance', async () => phaseAcceptanceStatus());
+  app.get('/phase-acceptance', async (request) => phaseAcceptanceStatus(request.profileId));
 
   app.get('/evaluations', async (request) => {
     const { target } = request.query as { target?: string };
-    return listEvaluations(target);
+    return listEvaluations(request.profileId, target);
   });
 
   app.post('/evaluations', async (request, reply) => {
     const body = parse(evaluationCreateSchema, request.body);
-    const evaluation = await createEvaluation(body);
+    const evaluation = await createEvaluation(request.profileId, body);
     return reply.status(201).send(evaluation);
   });
 }
