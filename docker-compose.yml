@@ -6,24 +6,20 @@ services:
       args:
         NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
     restart: unless-stopped
+    # host 网络：容器直接使用宿主机的回环地址访问 MongoDB，
+    # 不需要把 MongoDB 暴露到 Docker 网关，也不需要端口映射。
+    network_mode: host
     environment:
       NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 8787
-      # 复用宿主机已有 MongoDB；容器内的 127.0.0.1 指向容器自身，必须走 host-gateway。
-      # 如需账号密码或 MongoDB 在其他机器，在 .env 中覆盖 MONGODB_URI。
-      MONGODB_URI: ${MONGODB_URI:-mongodb://host.docker.internal:27017/airoad}
+      HOST: 127.0.0.1
+      PORT: 8788
+      MONGODB_URI: ${MONGODB_URI:-mongodb://127.0.0.1:27017/airoad}
       MONGODB_DB: ${MONGODB_DB:-airoad}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
       # AI 配置在网页「设置」中填写，保存在浏览器，不通过环境变量注入
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    # 只绑定本机，由宝塔 Nginx 反代 /api；不需要对公网开放
-    ports:
-      - "127.0.0.1:8787:8787"
     # 首次启动检测到空库会自动写入 12 周种子内容；已有进度不会被覆盖
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8788/api/health"]
       interval: 15s
       timeout: 5s
       retries: 6

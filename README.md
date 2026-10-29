@@ -76,7 +76,7 @@ npm run dev             # API :8787 + Web :5173
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `HOST` / `PORT` | `127.0.0.1` / `8787` | API 监听地址；容器内设为 `0.0.0.0` |
+| `HOST` / `PORT` | `127.0.0.1` / `8787` | API 监听地址；Docker 部署由 compose 设为 `127.0.0.1:8788` |
 | `WEB_ORIGIN` | `http://localhost:5173` | 允许跨域的前端来源 |
 | `MONGODB_URI` | 空 | 留空使用内置 MongoDB；生产填写外部连接串 |
 | `MONGODB_DB` | `airoad` | 数据库名 |
@@ -107,7 +107,7 @@ npm run build         # server tsc + web vue-tsc & vite build
 
 只把 API 跑在 Docker 里，前端构建成静态文件交给宝塔已有的 Nginx 托管，不再启动 nginx 容器。
 
-前置条件：域名已解析到服务器；宝塔已安装 Nginx；宿主机 MongoDB 已允许容器访问（见第 6 步）。
+前置条件：域名已解析到服务器；宝塔已安装 Nginx；宿主机 MongoDB 在 `127.0.0.1:27017` 可访问。Docker 使用 host 网络，不需要额外开放 MongoDB 端口。
 
 ### 1. 启动 API 容器
 
@@ -129,16 +129,18 @@ WEB_ORIGIN=https://learn.example.com
 ```bash
 docker compose up -d --remove-orphans --build
 docker compose ps
-curl http://127.0.0.1:8787/api/health
+curl http://127.0.0.1:8788/api/health
 ```
 
-返回 `"db":"connected"` 说明 API 和 MongoDB 都正常。compose 只启动 `api`，并绑定在 `127.0.0.1:8787`，公网访问统一经过宝塔 Nginx。
+返回 `"db":"connected"` 说明 API 和 MongoDB 都正常。compose 只启动 `api`，使用 host 网络并监听 `127.0.0.1:8788`，公网访问统一经过宝塔 Nginx。
 
 > 从旧版本升级时带 `--remove-orphans`，会自动清掉之前不用的 `web` 容器。
 > 如果构建卡在 `load metadata for docker.io/...`，说明服务器访问不了 Docker Hub，按「常见问题 → 构建拉不到基础镜像」切换 `NODE_IMAGE` 即可。
 
 - 首次启动检测到 `airoad` 空库会自动写入种子内容，已有数据不覆盖
 - 学习数据保存在宿主机 MongoDB，不在容器卷里，升级镜像不会丢失
+- host 网络下容器的 `127.0.0.1` 就是宿主机，`MONGODB_URI` 可保持 `mongodb://127.0.0.1:27017/airoad`，MongoDB 继续只监听 `127.0.0.1` 即可
+- `network_mode: host` 仅支持 Linux 宿主机
 
 ### 2. 构建前端静态文件
 
@@ -171,7 +173,19 @@ npm run build -w web
 
 ### 4. 配置站点 Nginx
 
-站点设置 → 配置文件，在 `server { ... }` 中加入以下内容（保留宝塔生成的 `root`、`index`、SSL、日志等配置，不要重复写 `root`）：
+站点设置 → 配置文件，在 `server { ... }` 中加入以下内容（保留宝塔生成的 `root`、`index`、SSL、日志等配置，不要重复写 `root`）。
+
+最小可用配置，普通接口够用：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:8788;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+但 AI 助手的流式回答还需要关闭缓冲，完整配置如下：
 
 ```nginx
 gzip on;
@@ -185,7 +199,7 @@ location ^~ /assets/ {
 
 # API 与 SSE：必须关闭缓冲
 location /api/ {
-    proxy_pass http://127.0.0.1:8787;
+    proxy_pass http://127.0.0.1:8788;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -229,8 +243,8 @@ docker compose up -d
 ### 6. 防火墙
 
 - 宝塔「安全」和云厂商安全组只放行 80 / 443
-- 不要放行 8787 与 27017；compose 已将 API 限制在 `127.0.0.1`
-- MongoDB 需监听 Docker 网关（如 `bindIp: 127.0.0.1,172.17.0.1`），或监听 `0.0.0.0` 并用防火墙限制来源
+- 不要放行 8788 与 27017；API 通过 host 网络只监听 `127.0.0.1`
+- MongoDB 保持监听 `127.0.0.1:27017` 即可，host 网络无需把 27017 暴露给 Docker 网桥
 
 ### 7. 更新部署
 
@@ -245,13 +259,14 @@ docker compose up -d --build
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 502 Bad Gateway | API 未启动或端口不对：`docker compose ps`、`docker compose logs api`、`curl http://127.0.0.1:8787/api/health` |
+| 502 Bad Gateway | API 未启动或端口不对：`docker compose ps`、`docker compose logs api`、`curl http://127.0.0.1:8788/api/health` |
 | 刷新子页面 404 | Nginx 缺少 `try_files $uri $uri/ /index.html` |
 | 页面空白或资源 404 | 站点根目录没有指向 `web/dist`，或没有重新上传构建产物 |
 | 接口返回 `Origin not allowed` | `.env` 的 `WEB_ORIGIN` 与地址栏不一致（协议/域名/端口），改完执行 `docker compose up -d` |
 | AI 回答不逐字输出 | 宝塔反代缺少 `proxy_buffering off;`，保存后重载 Nginx |
 | AI 长回答中途断开 | 反代的 `proxy_read_timeout` 太短，调整为 `300s` |
-| 容器连不上 MongoDB | MongoDB 只监听了 `127.0.0.1`，需加入 Docker 网关或监听 `0.0.0.0` 并限制来源 |
+| 日志报 `ECONNREFUSED 127.0.0.1:27017` | MongoDB 未启动或端口不是 27017：`ss -lntp \| grep 27017`、`systemctl status mongod` |
+| 容器连不上 MongoDB | 确认 compose 使用 `network_mode: host`，且 `.env` 的 `MONGODB_URI` 指向 `127.0.0.1:27017` |
 | 构建报 `load metadata for docker.io/...` | 服务器无法访问 Docker Hub，按下方「构建拉不到基础镜像」处理 |
 
 #### 构建拉不到基础镜像
